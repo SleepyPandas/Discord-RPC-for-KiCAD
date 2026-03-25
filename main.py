@@ -1,7 +1,7 @@
 """Discord Rich Presence bridge for KiCad 10.
 
 This script is intentionally Windows-first and keeps its runtime simple:
-- poll KiCad every 15 seconds
+- poll KiCad every 10 seconds
 - detect whether the foreground KiCad window is the PCB or Schematic editor
 - publish Rich Presence updates through Discord
 
@@ -114,7 +114,7 @@ class AppConfig:
     discord_client_id: str
     hide_filename: bool = False
     hidden_project_text: str = DEFAULT_HIDDEN_TEXT
-    poll_interval_seconds: int = 15
+    poll_interval_seconds: int = 10
     idle_threshold_seconds: int = 300
     large_image: str = ""
     large_text: str = ""
@@ -141,7 +141,7 @@ class AppConfig:
                 raw_config.get("hidden_project_text", DEFAULT_HIDDEN_TEXT)
             ).strip()
             or DEFAULT_HIDDEN_TEXT,
-            poll_interval_seconds=max(15, int(raw_config.get("poll_interval_seconds", 15))),
+            poll_interval_seconds=max(10, int(raw_config.get("poll_interval_seconds", 10))),
             idle_threshold_seconds=max(60, int(raw_config.get("idle_threshold_seconds", 300))),
             large_image=str(raw_config.get("large_image", "")).strip(),
             large_text=str(raw_config.get("large_text", "")).strip(),
@@ -461,7 +461,15 @@ class KiCadClientManager:
 
         try:
             self.client = KiCad(client_name="discord-rpc-for-kicad")
-            self.client.check_version()
+            try:
+                self.client.check_version()
+            except Exception as exc:
+                if type(exc).__name__ == "FutureVersionError":
+                    logging.warning(
+                        "KiCad version is newer than kicad-python API metadata; continuing anyway."
+                    )
+                else:
+                    raise
             self.last_ipc_connect_ok = True
             self._logged_ipc_refused_despite_server_on = False
             logging.info("Connected to KiCad IPC API.")
