@@ -1,0 +1,17 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v2#/definitions/Repository",
+  "maintainer": {
+    "name": "SleepyPandas",
+    "contact": {
+      "web": "https://github.com/SleepyPandas/Discord-RPC-for-KiCAD"
+    }
+  },
+  "name": "Discord RPC for KiCad repository",
+  "packages": {
+    "sha256": "ba2f052a8d1ff33eeaf6c9de1d5416d1076feeda08f9e886309a37c30364e207",
+    "update_time_utc": "2026-03-25 23:07:44",
+    "update_timestamp": 1774480064,
+    "url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/packages.json"
+  },
+  "schema_version": 2
+}
