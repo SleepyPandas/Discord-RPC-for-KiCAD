@@ -64,6 +64,7 @@ def write_package_metadata(staging_root: Path, metadata: dict) -> int:
     destination_path.write_text(
         json.dumps(metadata, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     return destination_path.stat().st_size
 
@@ -106,6 +107,7 @@ def write_json(path: Path, document: dict) -> None:
     path.write_text(
         json.dumps(document, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
+        newline="\n",
     )
 
 
