@@ -237,6 +237,8 @@ def parse_sheet_file_references(sheet_expression: str) -> list[str]:
 
 
 def parse_schematic_tree(root_path: Path) -> SchematicStats:
+    # KiCad's public IPC API is still PCB-focused, so schematic activity is
+    # derived from the saved `.kicad_sch` files instead of live editor objects.
     def walk(current_path: Path, ancestry: tuple[Path, ...]) -> tuple[int, str]:
         normalized_path = current_path.resolve()
 
@@ -441,6 +443,8 @@ def build_pcb_snapshot(window: WindowInfo, config: AppConfig, board: Any) -> Act
     # reroutes or moved items, so idle detection is more useful than count-only polling.
     board_fingerprint = sha1_text(board.get_as_string())
 
+    # Routed-net progress is intentionally omitted here because the current
+    # public IPC docs do not expose a clear exact remaining-nets metric.
     state_text = f"{layers}-Layer Board | {footprint_count} Parts | {via_count} Vias"
     return ActivitySnapshot(
         editor=EditorType.PCB,
