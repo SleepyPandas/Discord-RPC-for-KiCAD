@@ -105,6 +105,7 @@ user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 
 
 class EditorType(str, Enum):
+    GENERIC = "generic"
     PCB = "pcb"
     SCHEMATIC = "schematic"
 
@@ -213,8 +214,25 @@ def detect_active_window() -> WindowInfo | None:
     return WindowInfo(process_name=process_name, title=title, editor=editor)
 
 
+def is_kicad_process_name(process_name: str) -> bool:
+    return process_name.lower() in {"kicad.exe", "kicad"}
+
+
+def is_kicad_running() -> bool:
+    for process in psutil.process_iter(["name"]):
+        try:
+            process_name = str(process.info.get("name") or "").strip()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+        if is_kicad_process_name(process_name):
+            return True
+
+    return False
+
+
 def detect_editor_type(process_name: str, title: str) -> EditorType | None:
-    if process_name not in {"kicad.exe", "kicad"}:
+    if not is_kicad_process_name(process_name):
         return None
 
     lowered_title = title.lower()
@@ -229,6 +247,18 @@ def detect_editor_type(process_name: str, title: str) -> EditorType | None:
         return EditorType.PCB
 
     return None
+
+
+def build_background_snapshot() -> ActivitySnapshot:
+    return ActivitySnapshot(
+        editor=EditorType.GENERIC,
+        display_name=DEFAULT_APP_NAME,
+        project_name=DEFAULT_APP_NAME,
+        project_path=None,
+        window_title="",
+        state_text="Idle in background",
+        fingerprint="kicad-background-open",
+    )
 
 
 def shorten_display_name(name: str, config: AppConfig) -> str:
@@ -620,8 +650,12 @@ def build_activity_snapshot(
 ) -> ActivitySnapshot | None:
     window = detect_active_window()
     if window is None:
+        if is_kicad_running():
+            return build_background_snapshot()
         return None
     if window.editor is None:
+        if is_kicad_process_name(window.process_name) or is_kicad_running():
+            return build_background_snapshot()
         return None
 
     board = kicad_client.get_board()
@@ -643,15 +677,21 @@ def build_presence_payload(
     config: AppConfig,
     session_start_timestamp: int,
 ) -> dict[str, Any]:
-    details_prefix = (
-        "Routing PCB: " if snapshot.editor is EditorType.PCB else "Designing Schematic: "
-    )
+    if snapshot.editor is EditorType.GENERIC:
+        details = "KiCad Open"
+        state = snapshot.state_text
+    else:
+        details_prefix = (
+            "Routing PCB: " if snapshot.editor is EditorType.PCB else "Designing Schematic: "
+        )
+        details = f"{details_prefix}{snapshot.display_name}"
+        state = "Idle - Staring at the screen." if is_idle else snapshot.state_text
 
     payload: dict[str, Any] = {
         "name": DEFAULT_APP_NAME,
         "status_display_type": StatusDisplayType.DETAILS,
-        "details": f"{details_prefix}{snapshot.display_name}",
-        "state": "Idle - Staring at the screen." if is_idle else snapshot.state_text,
+        "details": details,
+        "state": state,
         "start": session_start_timestamp,
     }
 
