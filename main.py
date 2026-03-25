@@ -1,7 +1,7 @@
 """Discord Rich Presence bridge for KiCad 10.
 
 This script is intentionally Windows-first and keeps its runtime simple:
-- poll KiCad every 10 seconds
+- poll KiCad on a configurable interval
 - detect whether the foreground KiCad window is the PCB or Schematic editor
 - publish Rich Presence updates through Discord
 
@@ -142,7 +142,7 @@ class AppConfig:
                 raw_config.get("hidden_project_text", DEFAULT_HIDDEN_TEXT)
             ).strip()
             or DEFAULT_HIDDEN_TEXT,
-            poll_interval_seconds=max(10, int(raw_config.get("poll_interval_seconds", 10))),
+            poll_interval_seconds=max(3, int(raw_config.get("poll_interval_seconds", 10))),
             idle_threshold_seconds=max(60, int(raw_config.get("idle_threshold_seconds", 300))),
             large_image=str(raw_config.get("large_image", "")).strip(),
             large_text=str(raw_config.get("large_text", "")).strip(),
