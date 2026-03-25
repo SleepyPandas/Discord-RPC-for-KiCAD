@@ -1,16 +1,27 @@
-# KICAD Discord Rich Presence
+# KiCad Discord Rich Presence
 
-A simple project that updates Discord Rich Presence based on what you are doing in KiCad.
+This project publishes Discord Rich Presence updates based on what you are doing in KiCad 10.
 
-## Install
+## Install The KiCad Plugin
 
-To install a plugin using a third-party repository in KiCad 10:
+KiCad 10 expects a PCM repository URL, not the normal GitHub repository page.
 
-1. Copy the repository URL.
-2. Open KiCad 10 and launch the Plugin and Content Manager.
-3. Open the repository settings from the gear icon.
-4. Add the repository URL and save it.
-5. Install the plugin from the list and apply the pending changes.
+Add this repository to the Plugin and Content Manager:
+
+`https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/repository.json`
+
+Then install `Discord RPC for KiCad` from the list and apply the pending changes.
+
+## What The PCM Package Installs
+
+The KiCad PCM package installs the KiCad-side preferences plugin.
+
+The standalone Discord Rich Presence bridge is still a separate Python process that you run outside KiCad.
+
+## Run The Bridge
+
+1. Install the Python dependencies with `pip install -r requirements.txt`.
+2. Start the bridge with `python main.py`.
 
 ## Privacy Preferences
 
@@ -21,15 +32,28 @@ The preferences dialog lets you:
 - Enable or disable Privacy Mode.
 - Choose the replacement text shown in Discord when the project name is hidden.
 
-Saving these settings updates `config.json`, which is still the source of truth for the standalone bridge.
+## Shared Configuration
+
+The plugin and the standalone bridge now share the same user config file.
+
+On Windows the config file is stored at:
+
+`%APPDATA%\kicad\discord-rpc-for-kicad\config.json`
+
+If an older repo-local `config.json` exists, it is copied there automatically the first time the plugin or bridge runs.
 
 ## Restart Requirement
 
-The bridge reads `config.json` only when it starts. After changing Privacy Mode from the KiCad preferences dialog, restart the Discord RPC bridge for the new setting to apply.
+The bridge reads the config when it starts. After changing Privacy Mode from the KiCad preferences dialog, restart the Discord RPC bridge for the new setting to apply.
 
-## Manual Configuration
+## Rebuild The PCM Files
 
-If you prefer, you can still edit `config.json` directly:
+If you change the plugin files or package metadata, regenerate the KiCad PCM artifacts with:
 
-- `hide_filename`: hides the active project name in Discord.
-- `hidden_project_text`: replacement text to show when privacy mode is enabled.
+`python build_pcm.py`
+
+This rebuilds:
+
+- `repository.json`
+- `packages.json`
+- `pcm-artifacts/discord-rpc-for-kicad-v1.0.0-pcm.zip`
