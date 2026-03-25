@@ -1,32 +1,35 @@
-# KICAD Discord Rich Presence 
+# KICAD Discord Rich Presence
 
-A simple project for me to show my status on discord for KICAD please feel free to use and modify this for your own use. 
+A simple project that updates Discord Rich Presence based on what you are doing in KiCad.
 
+## Install
 
-To install a plugin using a "Magic Link" (Third-Party Repository) in KiCad 10, follow these simple steps. This method is the best way to ensure the plugin stays updated automatically.
+To install a plugin using a third-party repository in KiCad 10:
 
-### Step 1: Copy the Repository URL
+1. Copy the repository URL.
+2. Open KiCad 10 and launch the Plugin and Content Manager.
+3. Open the repository settings from the gear icon.
+4. Add the repository URL and save it.
+5. Install the plugin from the list and apply the pending changes.
 
-*Example: `PlaceHolder..... err for now`*
+## Privacy Preferences
 
-### Step 2: Open the Plugin Manager
-Launch KiCad 10. On the main project manager window, click the **Plugin and Content Manager** icon (it looks like a small computer chip with a colorful "plus" sign).
+After installation, open the PCB Editor and go to `Tools` -> `External Plugins` -> `Discord RPC Preferences`.
 
-### Step 3: Open Settings
-In the Plugin and Content Manager window, look for the **Gear Icon** in the top right corner. Click it to open the Repository Settings.
+The preferences dialog lets you:
 
+- Enable or disable Privacy Mode.
+- Choose the replacement text shown in Discord when the project name is hidden.
 
+Saving these settings updates `config.json`, which is still the source of truth for the standalone bridge.
 
-### Step 4: Add the New Repository
-1.  Click the **Add Repository** button at the bottom of the list.
-2.  Give it a **Name** (like "Discord RPC Repo").
-3.  Paste the URL you copied in Step 1 into the **Location** field.
-4.  Click **OK** to save the settings.
+## Restart Requirement
 
-### Step 5: Install the Plugin
-1.  Close the Settings window to go back to the main list.
-2.  Your new plugin should now appear in the list under the "Plugins" tab.
-3.  Click the **Install** button next to the plugin name.
-4.  Click **Apply Pending Changes** at the bottom of the window to finish the installation.
+The bridge reads `config.json` only when it starts. After changing Privacy Mode from the KiCad preferences dialog, restart the Discord RPC bridge for the new setting to apply.
 
-Once complete, KiCad will automatically handle any Python dependencies in the background, and the plugin will be ready to use.
+## Manual Configuration
+
+If you prefer, you can still edit `config.json` directly:
+
+- `hide_filename`: hides the active project name in Discord.
+- `hidden_project_text`: replacement text to show when privacy mode is enabled.
