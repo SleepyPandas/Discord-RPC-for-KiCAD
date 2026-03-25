@@ -638,7 +638,10 @@ def build_activity_snapshot(
 
 
 def build_presence_payload(
-    snapshot: ActivitySnapshot, is_idle: bool, config: AppConfig
+    snapshot: ActivitySnapshot,
+    is_idle: bool,
+    config: AppConfig,
+    session_start_timestamp: int,
 ) -> dict[str, Any]:
     details_prefix = (
         "Routing PCB: " if snapshot.editor is EditorType.PCB else "Designing Schematic: "
@@ -649,6 +652,7 @@ def build_presence_payload(
         "status_display_type": StatusDisplayType.DETAILS,
         "details": f"{details_prefix}{snapshot.display_name}",
         "state": "Idle - Staring at the screen." if is_idle else snapshot.state_text,
+        "start": session_start_timestamp,
     }
 
     if config.large_image:
@@ -666,6 +670,7 @@ def main() -> None:
 
     discord_client = DiscordRpcClient(config)
     kicad_client = KiCadClientManager(config)
+    session_start_timestamp = int(time.time())
 
     last_snapshot: ActivitySnapshot | None = None
     last_change_time = time.monotonic()
@@ -686,7 +691,14 @@ def main() -> None:
                     last_change_time = time.monotonic()
 
                 is_idle = (time.monotonic() - last_change_time) >= config.idle_threshold_seconds
-                discord_client.publish(build_presence_payload(snapshot, is_idle, config))
+                discord_client.publish(
+                    build_presence_payload(
+                        snapshot,
+                        is_idle,
+                        config,
+                        session_start_timestamp,
+                    )
+                )
 
         except KeyboardInterrupt:
             logging.info("Stopping KiCad Discord Rich Presence bridge.")
