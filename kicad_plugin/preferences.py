@@ -103,6 +103,7 @@ def show_preferences_dialog(parent: Any = None) -> None:
     if wx is None:
         raise RuntimeError("wxPython is required to show the preferences dialog.")
 
+    saved_path = None
     try:
         from .config_io import load_privacy_settings
 
@@ -125,7 +126,7 @@ def show_preferences_dialog(parent: Any = None) -> None:
         if updated_settings is None:
             return
 
-        save_privacy_settings(updated_settings)
+        saved_path = save_privacy_settings(updated_settings)
     except ConfigError as exc:
         wx.MessageBox(
             str(exc),
@@ -138,7 +139,11 @@ def show_preferences_dialog(parent: Any = None) -> None:
         dialog.destroy()
 
     wx.MessageBox(
-        "Privacy settings saved. Restart the Discord RPC bridge for changes to apply.",
+        (
+            "Privacy settings saved to:\n"
+            f"{saved_path}\n\n"
+            "Restart the Discord RPC bridge for changes to apply."
+        ),
         "Discord RPC Preferences",
         wx.OK | wx.ICON_INFORMATION,
         parent=parent,

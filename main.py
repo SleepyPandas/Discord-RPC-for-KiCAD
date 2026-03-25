@@ -24,16 +24,18 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-CONFIG_PATH = Path(__file__).with_name("config.json")
-DEFAULT_HIDDEN_TEXT = "Working on a generic project"
-DEFAULT_APP_NAME = "KiCad 10"
 import psutil
 from kipy import KiCad
 from pypresence import Presence
 from pypresence.types import StatusDisplayType
+from shared_config import get_config_path, load_config_document
 
+DEFAULT_HIDDEN_TEXT = "Working on a generic project"
+DEFAULT_APP_NAME = "KiCad 10"
 DETAILS_TEXT_LIMIT = 48
 STATE_TEXT_LIMIT = 48
+LEGACY_CONFIG_PATH = Path(__file__).with_name("config.json")
+CONFIG_PATH = get_config_path()
 
 
 def _discover_kicad_common_json_files() -> list[Path]:
@@ -127,16 +129,16 @@ class AppConfig:
 
     @classmethod
     def load(cls, config_path: Path) -> "AppConfig":
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"Missing config file: {config_path}. Create it from the provided template first."
-            )
-
-        raw_config = json.loads(config_path.read_text(encoding="utf-8"))
+        raw_config = load_config_document(
+            config_path,
+            legacy_candidates=(LEGACY_CONFIG_PATH,),
+        )
         client_id = str(raw_config.get("discord_client_id", "")).strip()
 
         if not client_id or client_id == "YOUR_DISCORD_APPLICATION_CLIENT_ID":
-            raise ValueError("config.json must contain a valid Discord application client ID.")
+            raise ValueError(
+                f"{config_path} must contain a valid Discord application client ID."
+            )
 
         return cls(
             discord_client_id=client_id,

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+
+from .shared_config import (
+    get_config_path as get_shared_config_path,
+    load_config_document,
+    save_config_document,
+)
 
 DEFAULT_HIDDEN_PROJECT_TEXT = "Working on a generic project"
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+LEGACY_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 
 class ConfigError(RuntimeError):
@@ -20,7 +24,7 @@ class PrivacySettings:
 
 
 def get_config_path() -> Path:
-    return CONFIG_PATH
+    return get_shared_config_path()
 
 
 def _normalize_hidden_text(value: str) -> str:
@@ -30,26 +34,18 @@ def _normalize_hidden_text(value: str) -> str:
     return cleaned_value
 
 
-def _load_config_document(config_path: Path) -> dict[str, Any]:
-    if not config_path.exists():
-        raise ConfigError(f"Config file was not found: {config_path}")
-
+def load_privacy_settings(config_path: Path | None = None) -> PrivacySettings:
+    resolved_path = config_path or get_config_path()
     try:
-        raw_data = json.loads(config_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        raw_config = load_config_document(
+            resolved_path,
+            legacy_candidates=(LEGACY_CONFIG_PATH,),
+        )
+    except ValueError as exc:
         raise ConfigError(f"Config file is not valid JSON: {exc}") from exc
     except OSError as exc:
         raise ConfigError(f"Unable to read config file: {exc}") from exc
 
-    if not isinstance(raw_data, dict):
-        raise ConfigError("Config file must contain a JSON object.")
-
-    return raw_data
-
-
-def load_privacy_settings(config_path: Path | None = None) -> PrivacySettings:
-    resolved_path = config_path or get_config_path()
-    raw_config = _load_config_document(resolved_path)
     hidden_text = str(
         raw_config.get("hidden_project_text", DEFAULT_HIDDEN_PROJECT_TEXT)
     ).strip() or DEFAULT_HIDDEN_PROJECT_TEXT
@@ -64,18 +60,25 @@ def save_privacy_settings(
     settings: PrivacySettings, config_path: Path | None = None
 ) -> Path:
     resolved_path = config_path or get_config_path()
-    raw_config = _load_config_document(resolved_path)
+    try:
+        raw_config = load_config_document(
+            resolved_path,
+            legacy_candidates=(LEGACY_CONFIG_PATH,),
+        )
+    except ValueError as exc:
+        raise ConfigError(f"Config file is not valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise ConfigError(f"Unable to read config file: {exc}") from exc
+
     raw_config["hide_filename"] = bool(settings.hide_filename)
     raw_config["hidden_project_text"] = _normalize_hidden_text(
         settings.hidden_project_text
     )
 
     try:
-        resolved_path.write_text(
-            json.dumps(raw_config, indent=2, ensure_ascii=True) + "\n",
-            encoding="utf-8",
+        return save_config_document(
+            raw_config,
+            resolved_path,
         )
     except OSError as exc:
         raise ConfigError(f"Unable to write config file: {exc}") from exc
-
-    return resolved_path
