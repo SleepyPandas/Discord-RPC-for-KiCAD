@@ -1,0 +1,170 @@
+name: Publish PCM Files
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-pcm:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: publish-pcm
+      cancel-in-progress: false
+
+    steps:
+      - name: Determine refs
+        id: refs
+        shell: bash
+        run: |
+          echo "publish_branch=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "build_ref=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "release_tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "release_tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: source
+          ref: ${{ steps.refs.outputs.build_ref }}
+
+      - name: Check out publish branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: publish
+          ref: ${{ steps.refs.outputs.publish_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate release version
+        id: metadata
+        working-directory: source
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.refs.outputs.release_tag }}
+        run: |
+          VERSION="$(python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          metadata = json.loads(Path("package-metadata.json").read_text(encoding="utf-8"))
+          version = str(metadata["versions"][0]["version"])
+          release_tag = os.environ.get("RELEASE_TAG", "")
+
+          if release_tag:
+              normalized_tag = release_tag[1:] if release_tag[:1] in {"v", "V"} else release_tag
+              if normalized_tag != version:
+                  print(
+                      f"Release tag {release_tag} does not match package version {version}.",
+                      file=sys.stderr,
+                  )
+                  raise SystemExit(1)
+
+          print(version)
+          PY
+          )"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=discord-rpc-for-kicad-v${VERSION}-pcm.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build PCM files
+        working-directory: source
+        run: python build_pcm.py
+
+      - name: Verify generated hashes
+        working-directory: source
+        env:
+          ARCHIVE_NAME: ${{ steps.metadata.outputs.archive_name }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def sha256_hex(path: Path) -> str:
+              digest = hashlib.sha256()
+              with path.open("rb") as file_handle:
+                  for chunk in iter(lambda: file_handle.read(65536), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          repository = json.loads(Path("repository.json").read_text(encoding="utf-8"))
+          packages = json.loads(Path("packages.json").read_text(encoding="utf-8"))
+          archive_path = Path("pcm-artifacts") / os.environ["ARCHIVE_NAME"]
+          if not archive_path.is_file():
+              raise SystemExit(f"Expected archive {archive_path} was not created.")
+          package_version = packages["packages"][0]["versions"][0]
+
+          expected_packages_hash = repository["packages"]["sha256"]
+          actual_packages_hash = sha256_hex(Path("packages.json"))
+          if expected_packages_hash != actual_packages_hash:
+              raise SystemExit(
+                  f"repository.json hash {expected_packages_hash} does not match packages.json hash "
+                  f"{actual_packages_hash}."
+              )
+
+          expected_archive_hash = package_version["download_sha256"]
+          actual_archive_hash = sha256_hex(archive_path)
+          if expected_archive_hash != actual_archive_hash:
+              raise SystemExit(
+                  f"packages.json archive hash {expected_archive_hash} does not match "
+                  f"{archive_path.name} hash {actual_archive_hash}."
+              )
+
+          expected_archive_size = package_version["download_size"]
+          actual_archive_size = archive_path.stat().st_size
+          if expected_archive_size != actual_archive_size:
+              raise SystemExit(
+                  f"packages.json archive size {expected_archive_size} does not match "
+                  f"{archive_path.name} size {actual_archive_size}."
+              )
+          PY
+
+      - name: Upload PCM archive to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          files: source/pcm-artifacts/${{ steps.metadata.outputs.archive_name }}
+
+      - name: Copy generated files to publish branch
+        env:
+          ARCHIVE_NAME: ${{ steps.metadata.outputs.archive_name }}
+        shell: bash
+        run: |
+          mkdir -p publish/pcm-artifacts
+          cp source/repository.json publish/repository.json
+          cp source/packages.json publish/packages.json
+          cp "source/pcm-artifacts/${ARCHIVE_NAME}" "publish/pcm-artifacts/${ARCHIVE_NAME}"
+
+      - name: Commit and push PCM updates
+        working-directory: publish
+        shell: bash
+        run: |
+          if [[ -z "$(git status --porcelain -- repository.json packages.json pcm-artifacts)" ]]; then
+            echo "No PCM updates to publish."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repository.json packages.json pcm-artifacts
+          git commit -m "chore: publish PCM files for v${{ steps.metadata.outputs.version }}"
+          git push origin HEAD:${{ steps.refs.outputs.publish_branch }}
