@@ -32,7 +32,7 @@
   ],
   "versions": [
     {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "status": "stable",
       "kicad_version": "10.0",
       "runtime": "swig",

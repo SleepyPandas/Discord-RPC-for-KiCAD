@@ -32,14 +32,14 @@ jobs:
           fi
 
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           path: source
           ref: ${{ steps.refs.outputs.build_ref }}
 
       - name: Check out publish branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           path: publish
