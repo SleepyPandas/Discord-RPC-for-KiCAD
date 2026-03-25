@@ -157,6 +157,7 @@ class AppConfig:
 @dataclass(frozen=True)
 class WindowInfo:
     process_name: str
+    process_id: int | None
     title: str
     editor: EditorType | None
 
@@ -169,12 +170,6 @@ class ActivitySnapshot:
     project_path: str | None
     window_title: str
     state_text: str
-    fingerprint: str
-
-
-@dataclass(frozen=True)
-class SchematicStats:
-    symbol_count: int
     fingerprint: str
 
 
@@ -206,6 +201,7 @@ def detect_active_window() -> WindowInfo | None:
 
     process_id = wintypes.DWORD()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+    resolved_process_id = int(process_id.value) if process_id.value else None
 
     try:
         process_name = psutil.Process(process_id.value).name().lower()
@@ -214,7 +210,12 @@ def detect_active_window() -> WindowInfo | None:
 
     title = get_window_text(hwnd)
     editor = detect_editor_type(process_name, title)
-    return WindowInfo(process_name=process_name, title=title, editor=editor)
+    return WindowInfo(
+        process_name=process_name,
+        process_id=resolved_process_id,
+        title=title,
+        editor=editor,
+    )
 
 
 def is_kicad_process_name(process_name: str) -> bool:
@@ -321,130 +322,6 @@ def sha1_text(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8")).hexdigest()
 
 
-def leading_token(expression: str) -> str:
-    match = re.match(r"^\(\s*([^\s()]+)", expression)
-    return match.group(1) if match else ""
-
-
-def extract_top_level_forms(text: str) -> list[str]:
-    forms: list[str] = []
-    depth = 0
-    form_start: int | None = None
-    in_string = False
-    escape_next = False
-    saw_root = False
-
-    for index, character in enumerate(text):
-        if escape_next:
-            escape_next = False
-            continue
-
-        if in_string:
-            if character == "\\":
-                escape_next = True
-            elif character == '"':
-                in_string = False
-            continue
-
-        if character == '"':
-            in_string = True
-            continue
-
-        if character == "(":
-            depth += 1
-            if not saw_root:
-                saw_root = True
-            elif depth == 2 and form_start is None:
-                form_start = index
-            continue
-
-        if character == ")":
-            if depth == 2 and form_start is not None:
-                forms.append(text[form_start : index + 1])
-                form_start = None
-            depth = max(depth - 1, 0)
-
-    return forms
-
-
-def parse_sheet_file_references(sheet_expression: str) -> list[str]:
-    matches = re.findall(r'\(property\s+"Sheet file"\s+"([^"]+)"', sheet_expression)
-    if matches:
-        return matches
-
-    # Some generated files may collapse the property name without a space.
-    return re.findall(r'\(property\s+"Sheetfile"\s+"([^"]+)"', sheet_expression)
-
-
-def parse_schematic_tree(root_path: Path) -> SchematicStats:
-    # KiCad's public IPC API is still PCB-focused, so schematic activity is
-    # derived from the saved `.kicad_sch` files instead of live editor objects.
-    def walk(current_path: Path, ancestry: tuple[Path, ...]) -> tuple[int, str]:
-        normalized_path = current_path.resolve()
-
-        if normalized_path in ancestry:
-            logging.warning("Skipping recursive schematic sheet reference: %s", normalized_path)
-            return 0, ""
-
-        text = current_path.read_text(encoding="utf-8")
-        forms = extract_top_level_forms(text)
-        symbol_count = 0
-        child_fingerprints: list[str] = []
-
-        for form in forms:
-            token = leading_token(form)
-
-            if token == "symbol":
-                symbol_count += 1
-                continue
-
-            if token != "sheet":
-                continue
-
-            for relative_sheet in parse_sheet_file_references(form):
-                child_path = (current_path.parent / relative_sheet).resolve()
-                if not child_path.exists():
-                    logging.warning("Referenced schematic sheet does not exist: %s", child_path)
-                    continue
-
-                child_symbols, child_fingerprint = walk(child_path, ancestry + (normalized_path,))
-                symbol_count += child_symbols
-                child_fingerprints.append(f"{child_path}:{child_fingerprint}")
-
-        file_fingerprint = hashlib.sha1()
-        file_fingerprint.update(str(normalized_path).encode("utf-8"))
-        file_fingerprint.update(text.encode("utf-8"))
-        for child in child_fingerprints:
-            file_fingerprint.update(child.encode("utf-8"))
-
-        return symbol_count, file_fingerprint.hexdigest()
-
-    total_symbols, fingerprint = walk(root_path, ())
-    return SchematicStats(symbol_count=total_symbols, fingerprint=fingerprint)
-
-
-def resolve_root_schematic_path(project_path: Path | None) -> Path | None:
-    if project_path is None:
-        return None
-
-    preferred = project_path.with_suffix(".kicad_sch")
-    if preferred.exists():
-        return preferred
-
-    matching_schematics = sorted(project_path.parent.glob("*.kicad_sch"))
-    if not matching_schematics:
-        return None
-
-    for candidate in matching_schematics:
-        if candidate.stem == project_path.stem:
-            return candidate
-
-    if len(matching_schematics) == 1:
-        return matching_schematics[0]
-
-    return None
-
-
 def resolve_project_name(project: Any, board: Any) -> str:
     project_name = str(getattr(project, "name", "") or "").strip()
     if project_name:
@@ -455,6 +332,66 @@ def resolve_project_name(project: Any, board: Any) -> str:
         return Path(board_name).stem or board_name
 
     return "Untitled Project"
+
+
+def extract_project_name_from_window_title(title: str) -> str:
+    trimmed_title = title.strip()
+    if not trimmed_title:
+        return "Untitled Project"
+
+    for separator in (" — ", " - "):
+        if separator in trimmed_title:
+            prefix = trimmed_title.split(separator, 1)[0].strip()
+            return prefix or "Untitled Project"
+
+    return trimmed_title
+
+
+def discover_open_schematic_files(process_id: int | None) -> list[Path]:
+    if process_id is None:
+        return []
+
+    try:
+        process = psutil.Process(process_id)
+        open_files = process.open_files()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return []
+
+    schematic_files: set[Path] = set()
+    for open_file in open_files:
+        file_path = Path(open_file.path)
+        if file_path.suffix.lower() == ".kicad_sch":
+            schematic_files.add(file_path)
+
+    return sorted(schematic_files)
+
+
+SCHEMATIC_CUSTOM_LABEL_PATTERN = re.compile(
+    r'\((?:global_label|hierarchical_label|label)\s+"([^"]+)"'
+)
+
+
+def count_custom_labels_in_schematics(schematic_files: list[Path]) -> int | None:
+    if not schematic_files:
+        return None
+
+    custom_labels: set[str] = set()
+    readable_file_seen = False
+    for schematic_file in schematic_files:
+        try:
+            content = schematic_file.read_text(encoding="utf-8", errors="ignore")
+            readable_file_seen = True
+        except Exception:
+            continue
+        for match in SCHEMATIC_CUSTOM_LABEL_PATTERN.finditer(content):
+            label_value = match.group(1).strip()
+            if label_value:
+                custom_labels.add(label_value)
+
+    if not readable_file_seen:
+        return None
+
+    return len(custom_labels)
 
 
 class DiscordRpcClient:
@@ -657,12 +594,27 @@ def build_schematic_snapshot(
     project = None
     project_path: Path | None = None
     project_name = "Untitled Project"
+    net_count: int | None = None
+    custom_net_count: int | None = None
+    board_fingerprint = ""
+    schematic_files: list[Path] = []
+    project_path_value = ""
 
     if board is not None:
         try:
             project = board.get_project()
         except Exception:
             project = None
+
+        try:
+            net_count = len(board.get_nets())
+        except Exception as exc:
+            logging.debug("Unable to retrieve schematic net count from KiCad IPC: %s", exc)
+
+        try:
+            board_fingerprint = board.get_as_string()
+        except Exception as exc:
+            logging.debug("Unable to retrieve board fingerprint for schematic snapshot: %s", exc)
 
     project_path_value = str(getattr(project, "path", "") or "").strip()
     if project_path_value:
@@ -671,19 +623,29 @@ def build_schematic_snapshot(
     elif board is not None:
         project_name = resolve_project_name(project, board)
 
-    schematic_path = resolve_root_schematic_path(project_path)
-    symbol_count = 0
-    schematic_fingerprint = ""
+    if board is None:
+        schematic_files = discover_open_schematic_files(window.process_id)
 
-    if schematic_path and schematic_path.exists():
-        stats = parse_schematic_tree(schematic_path)
-        symbol_count = stats.symbol_count
-        schematic_fingerprint = stats.fingerprint
+        if project_name == "Untitled Project":
+            if schematic_files:
+                project_name = schematic_files[0].stem or project_name
+            else:
+                project_name = extract_project_name_from_window_title(window.title)
+
+        if project_path is None and schematic_files:
+            project_path = schematic_files[0]
+
+        custom_net_count = count_custom_labels_in_schematics(schematic_files)
+
+    # The current public IPC API exposes board nets, but not a direct
+    # remaining/unrouted-nets metric for use here.
+    effective_custom_net_count = custom_net_count if custom_net_count is not None else net_count
+    if effective_custom_net_count is not None:
+        state_text = f"Editing | {format_compact_count(effective_custom_net_count)} Total Nets"
     else:
-        logging.debug("No root schematic file could be resolved from the current KiCad project.")
+        state_text = "Editing"
 
     display_name = shorten_display_name(project_name, config)
-    state_text = f"Editing | {format_compact_count(symbol_count)} symbols"
 
     return ActivitySnapshot(
         editor=EditorType.SCHEMATIC,
@@ -692,7 +654,7 @@ def build_schematic_snapshot(
         project_path=str(project_path) if project_path else None,
         window_title=window.title,
         state_text=state_text,
-        fingerprint=sha1_text(f"{window.title}|{state_text}|{schematic_fingerprint}"),
+        fingerprint=sha1_text(f"{window.title}|{state_text}|{board_fingerprint}"),
     )
 
 
