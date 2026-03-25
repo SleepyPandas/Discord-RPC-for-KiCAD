@@ -32,6 +32,9 @@ from kipy import KiCad
 from pypresence import Presence
 from pypresence.types import StatusDisplayType
 
+DETAILS_TEXT_LIMIT = 48
+STATE_TEXT_LIMIT = 48
+
 
 def _discover_kicad_common_json_files() -> list[Path]:
     paths: list[Path] = []
@@ -267,6 +270,51 @@ def shorten_display_name(name: str, config: AppConfig) -> str:
 
     cleaned_name = name.strip()
     return cleaned_name or "Untitled Project"
+
+
+def truncate_presence_text(value: str, limit: int) -> str:
+    cleaned_value = re.sub(r"\s+", " ", value).strip()
+    if limit <= 0:
+        return ""
+    if len(cleaned_value) <= limit:
+        return cleaned_value
+    if limit <= 3:
+        return cleaned_value[:limit]
+    return f"{cleaned_value[: limit - 3].rstrip()}..."
+
+
+def format_compact_count(value: int) -> str:
+    absolute_value = abs(value)
+    if absolute_value < 1000:
+        return str(value)
+
+    scaled_value = value / 1000
+    suffix = "k"
+    if absolute_value >= 1_000_000:
+        scaled_value = value / 1_000_000
+        suffix = "M"
+
+    compact_value = f"{scaled_value:.1f}".rstrip("0").rstrip(".")
+    return f"{compact_value}{suffix}"
+
+
+def build_presence_details(snapshot: ActivitySnapshot) -> str:
+    if snapshot.editor is EditorType.GENERIC:
+        return "KiCad"
+
+    editor_label = "PCB" if snapshot.editor is EditorType.PCB else "SCH"
+    return truncate_presence_text(f"{editor_label}: {snapshot.display_name}", DETAILS_TEXT_LIMIT)
+
+
+def build_presence_state(snapshot: ActivitySnapshot, is_idle: bool) -> str:
+    if snapshot.editor is EditorType.GENERIC:
+        return "Open in background"
+
+    base_state = truncate_presence_text(snapshot.state_text, STATE_TEXT_LIMIT)
+    if not is_idle:
+        return base_state
+
+    return truncate_presence_text(f"Idle | {snapshot.state_text}", STATE_TEXT_LIMIT)
 
 
 def sha1_text(value: str) -> str:
@@ -588,7 +636,10 @@ def build_pcb_snapshot(window: WindowInfo, config: AppConfig, board: Any) -> Act
 
     # Routed-net progress is intentionally omitted here because the current
     # public IPC docs do not expose a clear exact remaining-nets metric.
-    state_text = f"{layers}-Layer Board | {footprint_count} Parts | {via_count} Vias"
+    state_text = (
+        f"{layers} Layers | {format_compact_count(footprint_count)} parts"
+        f" | {format_compact_count(via_count)} vias"
+    )
     return ActivitySnapshot(
         editor=EditorType.PCB,
         display_name=display_name,
@@ -632,7 +683,7 @@ def build_schematic_snapshot(
         logging.debug("No root schematic file could be resolved from the current KiCad project.")
 
     display_name = shorten_display_name(project_name, config)
-    state_text = f"Placing Symbols & Wiring | {symbol_count} Symbols"
+    state_text = f"Editing | {format_compact_count(symbol_count)} symbols"
 
     return ActivitySnapshot(
         editor=EditorType.SCHEMATIC,
@@ -677,15 +728,8 @@ def build_presence_payload(
     config: AppConfig,
     session_start_timestamp: int,
 ) -> dict[str, Any]:
-    if snapshot.editor is EditorType.GENERIC:
-        details = "KiCad Open"
-        state = snapshot.state_text
-    else:
-        details_prefix = (
-            "Routing PCB: " if snapshot.editor is EditorType.PCB else "Designing Schematic: "
-        )
-        details = f"{details_prefix}{snapshot.display_name}"
-        state = "Idle - Staring at the screen." if is_idle else snapshot.state_text
+    details = build_presence_details(snapshot)
+    state = build_presence_state(snapshot, is_idle)
 
     payload: dict[str, Any] = {
         "name": DEFAULT_APP_NAME,
