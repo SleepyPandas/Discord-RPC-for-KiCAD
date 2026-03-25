@@ -15,6 +15,7 @@ import ctypes
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from ctypes import wintypes
@@ -23,15 +24,74 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+CONFIG_PATH = Path(__file__).with_name("config.json")
+DEFAULT_HIDDEN_TEXT = "Working on a generic project"
+DEFAULT_APP_NAME = "KiCad 10"
 import psutil
 from kipy import KiCad
 from pypresence import Presence
 from pypresence.types import StatusDisplayType
 
 
-CONFIG_PATH = Path(__file__).with_name("config.json")
-DEFAULT_HIDDEN_TEXT = "Working on a generic project"
-DEFAULT_APP_NAME = "KiCad 10"
+def _discover_kicad_common_json_files() -> list[Path]:
+    paths: list[Path] = []
+    for env_key in ("APPDATA", "LOCALAPPDATA"):
+        root_env = os.environ.get(env_key)
+        if not root_env:
+            continue
+        root = Path(root_env) / "kicad"
+        if not root.is_dir():
+            continue
+        for candidate in root.rglob("kicad_common.json"):
+            if candidate.is_file():
+                paths.append(candidate)
+    return sorted(set(paths))
+
+
+def _read_ipc_enable_server_summary() -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for path in _discover_kicad_common_json_files():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            api = data.get("api") if isinstance(data, dict) else None
+            if isinstance(api, dict):
+                summary[str(path)] = bool(api.get("enable_server"))
+            else:
+                summary[str(path)] = None
+        except Exception:
+            summary[str(path)] = "read_error"
+    return summary
+
+
+def _merge_enable_ipc_server_if_needed() -> list[Path]:
+    modified: list[Path] = []
+    for path in _discover_kicad_common_json_files():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                continue
+            api = data.setdefault("api", {})
+            if not isinstance(api, dict):
+                api = {}
+                data["api"] = api
+            if api.get("enable_server") is True:
+                continue
+            api["enable_server"] = True
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            modified.append(path)
+        except Exception:
+            continue
+    return modified
+
+
+def _should_try_ipc_server_patch(exc: Exception) -> bool:
+    if isinstance(exc, ConnectionError):
+        return True
+    lowered_name = type(exc).__name__.lower()
+    if "connection" in lowered_name:
+        return True
+    text = str(exc).lower()
+    return "refused" in text or "connection" in text
 
 
 user32 = ctypes.windll.user32
@@ -59,6 +119,7 @@ class AppConfig:
     large_image: str = ""
     large_text: str = ""
     log_level: str = "INFO"
+    auto_enable_kicad_ipc: bool = True
 
     @classmethod
     def load(cls, config_path: Path) -> "AppConfig":
@@ -85,6 +146,7 @@ class AppConfig:
             large_image=str(raw_config.get("large_image", "")).strip(),
             large_text=str(raw_config.get("large_text", "")).strip(),
             log_level=str(raw_config.get("log_level", "INFO")).strip().upper() or "INFO",
+            auto_enable_kicad_ipc=bool(raw_config.get("auto_enable_kicad_ipc", True)),
         )
 
 
@@ -381,13 +443,18 @@ class DiscordRpcClient:
 
 
 class KiCadClientManager:
-    def __init__(self) -> None:
+    def __init__(self, config: AppConfig) -> None:
+        self.config = config
         self.client: KiCad | None = None
+        self._ipc_patch_attempted = False
+        self._logged_ipc_refused_despite_server_on = False
+        self.last_ipc_connect_ok: bool | None = None
 
     def ensure_connected(self) -> bool:
         if self.client is not None:
             try:
                 self.client.ping()
+                self.last_ipc_connect_ok = True
                 return True
             except Exception:
                 self.reset()
@@ -395,11 +462,47 @@ class KiCadClientManager:
         try:
             self.client = KiCad(client_name="discord-rpc-for-kicad")
             self.client.check_version()
+            self.last_ipc_connect_ok = True
+            self._logged_ipc_refused_despite_server_on = False
             logging.info("Connected to KiCad IPC API.")
             return True
         except Exception as exc:
             self.client = None
+            self.last_ipc_connect_ok = False
             logging.debug("KiCad IPC connection failed: %s", exc)
+            if (
+                self.config.auto_enable_kicad_ipc
+                and _should_try_ipc_server_patch(exc)
+                and not self._ipc_patch_attempted
+            ):
+                self._ipc_patch_attempted = True
+                before = _read_ipc_enable_server_summary()
+                modified = _merge_enable_ipc_server_if_needed()
+                if modified:
+                    logging.warning(
+                        "KiCad IPC connection refused. Set api.enable_server=true in: %s. "
+                        "Quit KiCad completely and start it again, then rerun this script.",
+                        ", ".join(str(p) for p in modified),
+                    )
+                else:
+                    logging.warning(
+                        "KiCad IPC connection refused. Open KiCad Preferences and enable the "
+                        "IPC API / plugin API server if available, or add "
+                        '"api": { "enable_server": true } to kicad_common.json under '
+                        "%%APPDATA%%\\kicad\\<version>\\. Quit KiCad and start it again. "
+                        "Original error: %s",
+                        exc,
+                    )
+            if _should_try_ipc_server_patch(exc) and not self._logged_ipc_refused_despite_server_on:
+                summary = _read_ipc_enable_server_summary()
+                bool_vals = [v for v in summary.values() if isinstance(v, bool)]
+                if bool_vals and all(bool_vals):
+                    self._logged_ipc_refused_despite_server_on = True
+                    logging.warning(
+                        "KiCad IPC still refused while api.enable_server is true on disk. "
+                        "Fully quit KiCad (confirm no kicad.exe in Task Manager), then start KiCad "
+                        "again so the API server binds. This script cannot hot-reload KiCad."
+                    )
             return False
 
     def get_board(self) -> Any | None:
@@ -408,7 +511,8 @@ class KiCadClientManager:
 
         try:
             assert self.client is not None
-            return self.client.get_board()
+            board = self.client.get_board()
+            return board
         except Exception as exc:
             logging.debug("Unable to retrieve KiCad board state: %s", exc)
             self.reset()
@@ -422,6 +526,7 @@ class KiCadClientManager:
                 pass
 
         self.client = None
+        self.last_ipc_connect_ok = False
 
 
 def build_pcb_snapshot(window: WindowInfo, config: AppConfig, board: Any) -> ActivitySnapshot | None:
@@ -506,14 +611,18 @@ def build_activity_snapshot(
     config: AppConfig, kicad_client: KiCadClientManager
 ) -> ActivitySnapshot | None:
     window = detect_active_window()
-    if window is None or window.editor is None:
+    if window is None:
+        return None
+    if window.editor is None:
         return None
 
     board = kicad_client.get_board()
 
     if window.editor is EditorType.PCB:
         if board is None:
-            logging.debug("PCB editor is focused, but no board is available from KiCad.")
+            logging.debug(
+                "PCB editor is focused, but no board is available (KiCad IPC down or no PCB open)."
+            )
             return None
         return build_pcb_snapshot(window, config, board)
 
@@ -548,7 +657,7 @@ def main() -> None:
     configure_logging(config.log_level)
 
     discord_client = DiscordRpcClient(config)
-    kicad_client = KiCadClientManager()
+    kicad_client = KiCadClientManager(config)
 
     last_snapshot: ActivitySnapshot | None = None
     last_change_time = time.monotonic()
