@@ -174,7 +174,8 @@ def get_process_name(process_id: int | None) -> str:
             handle, 0, buffer, ctypes.byref(buffer_size)
         ):
             return ""
-        return Path(buffer.value).name().lower()
+        process_path = buffer.value
+        return Path(process_path).name.lower()
     finally:
         kernel32.CloseHandle(handle)
 
