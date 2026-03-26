@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .preferences import show_preferences_dialog
+from .runtime import ensure_runtime_started
 
 try:
     import pcbnew  # type: ignore[import-not-found]
@@ -43,6 +44,8 @@ def register_plugin() -> DiscordRpcPreferencesPlugin | None:
 
     plugin = DiscordRpcPreferencesPlugin()
     plugin.register()
+    if wx is not None:
+        wx.CallAfter(ensure_runtime_started)
     return plugin
 
 

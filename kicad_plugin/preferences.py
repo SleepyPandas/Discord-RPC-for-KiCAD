@@ -142,7 +142,7 @@ def show_preferences_dialog(parent: Any = None) -> None:
         (
             "Privacy settings saved to:\n"
             f"{saved_path}\n\n"
-            "Restart the Discord RPC bridge for changes to apply."
+            "Changes apply automatically within the next refresh while KiCad is open."
         ),
         "Discord RPC Preferences",
         wx.OK | wx.ICON_INFORMATION,
