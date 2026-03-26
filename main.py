@@ -31,7 +31,7 @@ from pypresence.types import StatusDisplayType
 from shared_config import get_config_path, load_config_document
 
 DEFAULT_HIDDEN_TEXT = "Working on a generic project"
-DEFAULT_APP_NAME = "KiCad 10"
+DEFAULT_APP_NAME = "KiCad"
 DETAILS_TEXT_LIMIT = 48
 STATE_TEXT_LIMIT = 48
 LEGACY_CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -701,7 +701,7 @@ def build_presence_payload(
 
     payload: dict[str, Any] = {
         "name": DEFAULT_APP_NAME,
-        "status_display_type": StatusDisplayType.DETAILS,
+        "status_display_type": StatusDisplayType.NAME,
         "details": details,
         "state": state,
         "start": session_start_timestamp,

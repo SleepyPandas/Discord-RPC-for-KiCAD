@@ -30,7 +30,7 @@ try:
 except ImportError:  # pragma: no cover - only available inside KiCad's Python.
     pcbnew = None  # type: ignore[assignment]
 
-DEFAULT_APP_NAME = "KiCad 10"
+DEFAULT_APP_NAME = "KiCAD"
 DEFAULT_HIDDEN_TEXT = "Working on a generic project"
 DETAILS_TEXT_LIMIT = 48
 STATE_TEXT_LIMIT = 48
@@ -629,7 +629,7 @@ def main() -> int:
                     is_idle = (time.monotonic() - last_change_time) >= config.idle_threshold_seconds
                     payload: dict[str, Any] = {
                         "name": DEFAULT_APP_NAME,
-                        "status_display_type": StatusDisplayType.DETAILS,
+                        "status_display_type": StatusDisplayType.NAME,
                         "details": build_presence_details(snapshot),
                         "state": build_presence_state(snapshot, is_idle),
                         "start": session_start_timestamp or int(time.time()),
