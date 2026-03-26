@@ -25,6 +25,11 @@ from pypresence import Presence
 from pypresence.types import StatusDisplayType
 from shared_config import get_config_directory, get_config_path, load_config_document
 
+try:
+    import pcbnew  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - only available inside KiCad's Python.
+    pcbnew = None  # type: ignore[assignment]
+
 DEFAULT_APP_NAME = "KiCad 10"
 DEFAULT_HIDDEN_TEXT = "Working on a generic project"
 DETAILS_TEXT_LIMIT = 48
@@ -95,7 +100,7 @@ class AppConfig:
     discord_client_id: str
     hide_filename: bool = False
     hidden_project_text: str = DEFAULT_HIDDEN_TEXT
-    poll_interval_seconds: int = 10
+    poll_interval_seconds: int = 5
     idle_threshold_seconds: int = 300
     large_image: str = ""
     large_text: str = ""
@@ -117,7 +122,7 @@ class AppConfig:
                 raw_config.get("hidden_project_text", DEFAULT_HIDDEN_TEXT)
             ).strip()
             or DEFAULT_HIDDEN_TEXT,
-            poll_interval_seconds=max(3, int(raw_config.get("poll_interval_seconds", 10))),
+            poll_interval_seconds=max(3, int(raw_config.get("poll_interval_seconds", 5))),
             idle_threshold_seconds=max(60, int(raw_config.get("idle_threshold_seconds", 300))),
             large_image=str(raw_config.get("large_image", "")).strip(),
             large_text=str(raw_config.get("large_text", "")).strip(),
@@ -147,7 +152,7 @@ class ActivitySnapshot:
 class WatcherStateWriter:
     def __init__(self, path: Path) -> None:
         self._path = path
-        self._last_payload: str | None = None
+        self._last_payload: dict[str, Any] | None = None
 
     def write(
         self,
@@ -158,7 +163,7 @@ class WatcherStateWriter:
         state: str | None = None,
         message: str | None = None,
     ) -> None:
-        payload: dict[str, Any] = {"status": status, "pid": os.getpid(), "timestamp": int(time.time())}
+        payload: dict[str, Any] = {"status": status, "pid": os.getpid()}
         if message:
             payload["message"] = message
         if snapshot is not None:
@@ -178,13 +183,17 @@ class WatcherStateWriter:
         if state is not None:
             payload["state"] = state
 
-        serialized = json.dumps(payload, indent=2, ensure_ascii=True) + "\n"
-        if serialized == self._last_payload:
+        if payload == self._last_payload:
             return
 
+        serialized = json.dumps(
+            {**payload, "timestamp": int(time.time())},
+            indent=2,
+            ensure_ascii=True,
+        ) + "\n"
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(serialized, encoding="utf-8")
-        self._last_payload = serialized
+        self._last_payload = dict(payload)
         logging.info("Watcher state=%s details=%s state=%s", status, details or "", state or "")
 
 
@@ -372,6 +381,21 @@ def truncate_presence_text(value: str, limit: int) -> str:
     return f"{cleaned_value[: limit - 3].rstrip()}..."
 
 
+def format_compact_count(value: int) -> str:
+    absolute_value = abs(value)
+    if absolute_value < 1000:
+        return str(value)
+
+    scaled_value = value / 1000
+    suffix = "k"
+    if absolute_value >= 1_000_000:
+        scaled_value = value / 1_000_000
+        suffix = "M"
+
+    compact_value = f"{scaled_value:.1f}".rstrip("0").rstrip(".")
+    return f"{compact_value}{suffix}"
+
+
 def get_file_mtime_ns(path: Path | None) -> int:
     if path is None or not path.exists():
         return 0
@@ -446,6 +470,25 @@ def discover_schematic_files(window: WindowInfo) -> list[Path]:
     )
 
 
+def build_pcb_state_text(pcb_path: Path | None) -> str:
+    if pcb_path is None or pcbnew is None:
+        return "Editing PCB"
+
+    try:
+        board = pcbnew.LoadBoard(str(pcb_path))
+        layers = board.GetCopperLayerCount()
+        footprint_count = len(list(board.GetFootprints()))
+        via_count = sum(1 for track in board.GetTracks() if isinstance(track, pcbnew.PCB_VIA))
+    except Exception as exc:
+        logging.debug("Unable to load PCB details from %s: %s", pcb_path, exc)
+        return "Editing PCB"
+
+    return (
+        f"{layers} Layers | {format_compact_count(footprint_count)} parts"
+        f" | {format_compact_count(via_count)} vias"
+    )
+
+
 def count_custom_labels_in_schematics(schematic_files: list[Path]) -> int | None:
     if not schematic_files:
         return None
@@ -494,14 +537,15 @@ def build_pcb_snapshot(window: WindowInfo, config: AppConfig) -> ActivitySnapsho
     project_name = extract_project_name_from_window_title(window.title)
     if project_name == "Untitled Project" and pcb_path is not None:
         project_name = pcb_path.stem or project_name
+    state_text = build_pcb_state_text(pcb_path)
     return ActivitySnapshot(
         editor=EditorType.PCB,
         display_name=shorten_display_name(project_name, config),
         project_name=project_name,
         project_path=str(pcb_path) if pcb_path is not None else None,
         window_title=window.title,
-        state_text="Editing PCB",
-        fingerprint=sha1_text(f"{window.title}|{pcb_path}|{get_file_mtime_ns(pcb_path)}|pcb"),
+        state_text=state_text,
+        fingerprint=sha1_text(f"{window.title}|{state_text}|{pcb_path}|{get_file_mtime_ns(pcb_path)}|pcb"),
     )
 
 
