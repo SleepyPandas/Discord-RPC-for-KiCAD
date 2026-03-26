@@ -34,17 +34,17 @@
       ],
       "versions": [
         {
-          "version": "1.0.0",
+          "version": "1.0.1",
           "status": "stable",
           "kicad_version": "10.0",
           "runtime": "swig",
           "platforms": [
             "windows"
           ],
-          "download_url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/discord-rpc-for-kicad-v1.0.0-pcm.zip",
-          "download_sha256": "1042c3a6bb614c5fd712b2096a789aeff5eecd15b797e83a25af3bf41a6a1c62",
-          "download_size": 23785,
-          "install_size": 87436
+          "download_url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/discord-rpc-for-kicad-v1.0.1-pcm.zip",
+          "download_sha256": "c61d7669eda6e49f081910e8e5aa2b60d04b96e1bef03118393234cf76f70494",
+          "download_size": 24772,
+          "install_size": 93627
         }
       ]
     }
