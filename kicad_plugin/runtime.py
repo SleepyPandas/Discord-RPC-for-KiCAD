@@ -181,7 +181,11 @@ def get_process_name(process_id: int | None) -> str:
 
 
 def is_kicad_process_name(process_name: str) -> bool:
-    return process_name.lower() in {"kicad.exe", "kicad"}
+    return process_name.lower() in {
+        "kicad.exe", "kicad",
+        "pcbnew.exe", "pcbnew",
+        "eeschema.exe", "eeschema",
+    }
 
 
 def detect_editor_type(process_name: str, title: str) -> EditorType | None:

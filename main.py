@@ -221,7 +221,11 @@ def detect_active_window() -> WindowInfo | None:
 
 
 def is_kicad_process_name(process_name: str) -> bool:
-    return process_name.lower() in {"kicad.exe", "kicad"}
+    return process_name.lower() in {
+        "kicad.exe", "kicad",
+        "pcbnew.exe", "pcbnew",
+        "eeschema.exe", "eeschema",
+    }
 
 
 def is_kicad_running() -> bool:
