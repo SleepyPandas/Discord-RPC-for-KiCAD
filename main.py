@@ -36,6 +36,7 @@ DETAILS_TEXT_LIMIT = 48
 STATE_TEXT_LIMIT = 48
 LEGACY_CONFIG_PATH = Path(__file__).with_name("config.json")
 CONFIG_PATH = get_config_path()
+WINDOW_TITLE_SPLIT_PATTERN = re.compile(r"\s+(?:-|\u2013|\u2014)\s+")
 
 
 def _discover_kicad_common_json_files() -> list[Path]:
@@ -271,11 +272,30 @@ def build_background_snapshot() -> ActivitySnapshot:
     )
 
 
+def clean_project_name(value: str) -> str:
+    return value.strip().lstrip("*").strip()
+
+
+def is_editor_title_fragment(value: str) -> bool:
+    lowered_value = value.lower()
+    return any(
+        marker in lowered_value
+        for marker in (
+            "pcb editor",
+            "pcbnew",
+            "schematic editor",
+            "eeschema",
+            "project manager",
+            "kicad",
+        )
+    )
+
+
 def shorten_display_name(name: str, config: AppConfig) -> str:
     if config.hide_filename:
         return config.hidden_project_text
 
-    cleaned_name = name.strip()
+    cleaned_name = clean_project_name(name)
     return cleaned_name or "Untitled Project"
 
 
@@ -310,7 +330,10 @@ def build_presence_details(snapshot: ActivitySnapshot) -> str:
         return "KiCad"
 
     editor_label = "PCB" if snapshot.editor is EditorType.PCB else "SCH"
-    return truncate_presence_text(f"{editor_label}: {snapshot.display_name}", DETAILS_TEXT_LIMIT)
+    return truncate_presence_text(
+        f"KiCad {editor_label}: {snapshot.display_name}",
+        DETAILS_TEXT_LIMIT,
+    )
 
 
 def build_presence_state(snapshot: ActivitySnapshot, is_idle: bool) -> str:
@@ -329,28 +352,35 @@ def sha1_text(value: str) -> str:
 
 
 def resolve_project_name(project: Any, board: Any) -> str:
-    project_name = str(getattr(project, "name", "") or "").strip()
+    project_name = clean_project_name(str(getattr(project, "name", "") or ""))
     if project_name:
         return project_name
 
     board_name = str(getattr(board, "name", "") or "").strip()
     if board_name:
-        return Path(board_name).stem or board_name
+        return clean_project_name(Path(board_name).stem or board_name)
 
     return "Untitled Project"
 
 
 def extract_project_name_from_window_title(title: str) -> str:
-    trimmed_title = title.strip()
+    trimmed_title = clean_project_name(title)
     if not trimmed_title:
         return "Untitled Project"
 
-    for separator in (" — ", " - "):
-        if separator in trimmed_title:
-            prefix = trimmed_title.split(separator, 1)[0].strip()
-            return prefix or "Untitled Project"
+    title_parts = [
+        clean_project_name(part)
+        for part in WINDOW_TITLE_SPLIT_PATTERN.split(trimmed_title)
+        if clean_project_name(part)
+    ]
+    if not title_parts:
+        return "Untitled Project"
 
-    return trimmed_title
+    non_editor_parts = [part for part in title_parts if not is_editor_title_fragment(part)]
+    if non_editor_parts:
+        return non_editor_parts[0]
+
+    return title_parts[0]
 
 
 def discover_open_schematic_files(process_id: int | None) -> list[Path]:
@@ -398,6 +428,57 @@ def count_custom_labels_in_schematics(schematic_files: list[Path]) -> int | None
         return None
 
     return len(custom_labels)
+
+
+def count_board_collection(board: Any, method_name: str, log_label: str) -> int | None:
+    try:
+        return len(getattr(board, method_name)())
+    except Exception as exc:
+        logging.debug("Unable to retrieve %s from KiCad IPC: %s", log_label, exc)
+        return None
+
+
+def build_pcb_state_text(board: Any) -> str:
+    try:
+        layers = board.get_copper_layer_count()
+    except Exception as exc:
+        logging.debug("Unable to retrieve PCB layer count from KiCad IPC: %s", exc)
+        layers = None
+
+    footprint_count = count_board_collection(board, "get_footprints", "PCB footprints")
+    track_count = count_board_collection(board, "get_tracks", "PCB tracks")
+    via_count = count_board_collection(board, "get_vias", "PCB vias")
+    shape_count = count_board_collection(board, "get_shapes", "PCB shapes") or 0
+    text_count = count_board_collection(board, "get_text", "PCB text") or 0
+    dimension_count = count_board_collection(board, "get_dimensions", "PCB dimensions") or 0
+    zone_count = count_board_collection(board, "get_zones", "PCB zones") or 0
+
+    item_count = None
+    if footprint_count is not None and track_count is not None and via_count is not None:
+        item_count = (
+            footprint_count
+            + track_count
+            + via_count
+            + shape_count
+            + text_count
+            + dimension_count
+            + zone_count
+        )
+
+    stats: list[str] = []
+    if item_count is not None:
+        stats.append(f"{format_compact_count(item_count)} Items")
+    if track_count is not None:
+        stats.append(f"{format_compact_count(track_count)} Tracks")
+    if via_count is not None:
+        stats.append(f"{format_compact_count(via_count)} Vias")
+    if layers is not None:
+        stats.append(f"{layers} Layers")
+
+    if stats:
+        return " | ".join(stats)
+
+    return "Editing PCB"
 
 
 class DiscordRpcClient:
@@ -569,20 +650,11 @@ def build_pcb_snapshot(window: WindowInfo, config: AppConfig, board: Any) -> Act
     project_name = resolve_project_name(project, board)
     display_name = shorten_display_name(project_name, config)
 
-    layers = board.get_copper_layer_count()
-    footprint_count = len(board.get_footprints())
-    via_count = len(board.get_vias())
-
     # Hashing the full board text catches edits that do not change counts, such as
     # reroutes or moved items, so idle detection is more useful than count-only polling.
     board_fingerprint = sha1_text(board.get_as_string())
 
-    # Routed-net progress is intentionally omitted here because the current
-    # public IPC docs do not expose a clear exact remaining-nets metric.
-    state_text = (
-        f"{layers} Layers | {format_compact_count(footprint_count)} parts"
-        f" | {format_compact_count(via_count)} vias"
-    )
+    state_text = build_pcb_state_text(board)
     return ActivitySnapshot(
         editor=EditorType.PCB,
         display_name=display_name,

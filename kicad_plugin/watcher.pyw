@@ -30,7 +30,7 @@ try:
 except ImportError:  # pragma: no cover - only available inside KiCad's Python.
     pcbnew = None  # type: ignore[assignment]
 
-DEFAULT_APP_NAME = "KiCAD"
+DEFAULT_APP_NAME = "KiCad"
 DEFAULT_HIDDEN_TEXT = "Working on a generic project"
 DETAILS_TEXT_LIMIT = 48
 STATE_TEXT_LIMIT = 48
@@ -46,6 +46,7 @@ ERROR_ALREADY_EXISTS = 183
 SCHEMATIC_CUSTOM_LABEL_PATTERN = re.compile(
     r'\((?:global_label|hierarchical_label|label)\s+"([^"]+)"'
 )
+WINDOW_TITLE_SPLIT_PATTERN = re.compile(r"\s+(?:-|\u2013|\u2014)\s+")
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
@@ -366,10 +367,29 @@ def any_kicad_running() -> bool:
         kernel32.CloseHandle(snapshot)
 
 
+def clean_project_name(value: str) -> str:
+    return value.strip().lstrip("*").strip()
+
+
+def is_editor_title_fragment(value: str) -> bool:
+    lowered_value = value.lower()
+    return any(
+        marker in lowered_value
+        for marker in (
+            "pcb editor",
+            "pcbnew",
+            "schematic editor",
+            "eeschema",
+            "project manager",
+            "kicad",
+        )
+    )
+
+
 def shorten_display_name(name: str, config: AppConfig) -> str:
     if config.hide_filename:
         return config.hidden_project_text
-    return name.strip() or "Untitled Project"
+    return clean_project_name(name) or "Untitled Project"
 
 
 def truncate_presence_text(value: str, limit: int) -> str:
@@ -406,13 +426,20 @@ def get_file_mtime_ns(path: Path | None) -> int:
 
 
 def extract_project_name_from_window_title(title: str) -> str:
-    trimmed_title = title.strip()
+    trimmed_title = clean_project_name(title)
     if not trimmed_title:
         return "Untitled Project"
-    for separator in (" — ", " â€” ", " - "):
-        if separator in trimmed_title:
-            return trimmed_title.split(separator, 1)[0].strip() or "Untitled Project"
-    return trimmed_title
+    title_parts = [
+        clean_project_name(part)
+        for part in WINDOW_TITLE_SPLIT_PATTERN.split(trimmed_title)
+        if clean_project_name(part)
+    ]
+    if not title_parts:
+        return "Untitled Project"
+    non_editor_parts = [part for part in title_parts if not is_editor_title_fragment(part)]
+    if non_editor_parts:
+        return non_editor_parts[0]
+    return title_parts[0]
 
 
 def find_path_in_title(title: str, extension: str) -> Path | None:
@@ -421,6 +448,68 @@ def find_path_in_title(title: str, extension: str) -> Path | None:
         return None
     candidate = Path(match.group(1))
     return candidate if candidate.exists() else None
+
+
+def iter_kicad_version_directories() -> list[Path]:
+    root = Path(os.environ.get("APPDATA", "")) / "kicad"
+    if not root.is_dir():
+        return []
+    return sorted((path for path in root.iterdir() if path.is_dir()), reverse=True)
+
+
+def collect_matching_paths(value: Any, suffix: str) -> list[Path]:
+    matches: list[Path] = []
+    if isinstance(value, dict):
+        for nested_value in value.values():
+            matches.extend(collect_matching_paths(nested_value, suffix))
+    elif isinstance(value, list):
+        for nested_value in value:
+            matches.extend(collect_matching_paths(nested_value, suffix))
+    elif isinstance(value, str) and value.lower().endswith(suffix.lower()):
+        candidate = Path(value)
+        if candidate.is_file():
+            matches.append(candidate)
+    return matches
+
+
+def load_recent_kicad_paths(json_filename: str, suffix: str) -> list[Path]:
+    collected_paths: list[Path] = []
+    seen_paths: set[Path] = set()
+    for version_dir in iter_kicad_version_directories():
+        json_path = version_dir / json_filename
+        if not json_path.is_file():
+            continue
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for candidate in collect_matching_paths(data, suffix):
+            if candidate in seen_paths:
+                continue
+            seen_paths.add(candidate)
+            collected_paths.append(candidate)
+    return collected_paths
+
+
+def find_recent_paths_by_project_name(
+    project_name: str,
+    json_filename: str,
+    suffix: str,
+) -> list[Path]:
+    normalized_project_name = clean_project_name(project_name).casefold()
+    if not normalized_project_name:
+        return []
+
+    exact_matches: list[Path] = []
+    partial_matches: list[Path] = []
+    for candidate in load_recent_kicad_paths(json_filename, suffix):
+        candidate_stem = clean_project_name(candidate.stem).casefold()
+        if candidate_stem == normalized_project_name:
+            exact_matches.append(candidate)
+        elif normalized_project_name in candidate_stem:
+            partial_matches.append(candidate)
+
+    return exact_matches or partial_matches
 
 
 def discover_project_dir_from_title(title: str) -> Path | None:
@@ -444,10 +533,17 @@ def discover_pcb_file(window: WindowInfo) -> Path | None:
     title_path = find_path_in_title(window.title, ".kicad_pcb")
     if title_path is not None:
         return title_path
+    project_name = extract_project_name_from_window_title(window.title)
+    recent_matches = find_recent_paths_by_project_name(
+        project_name,
+        "pcbnew.json",
+        ".kicad_pcb",
+    )
+    if recent_matches:
+        return recent_matches[0]
     project_dir = discover_project_dir_from_title(window.title)
     if project_dir is None:
         return None
-    project_name = extract_project_name_from_window_title(window.title)
     named_candidate = project_dir / f"{project_name}.kicad_pcb"
     if named_candidate.is_file():
         return named_candidate
@@ -460,6 +556,14 @@ def discover_schematic_files(window: WindowInfo) -> list[Path]:
     title_path = find_path_in_title(window.title, ".kicad_sch")
     if title_path is not None:
         return [title_path]
+    project_name = extract_project_name_from_window_title(window.title)
+    recent_matches = find_recent_paths_by_project_name(
+        project_name,
+        "eeschema.json",
+        ".kicad_sch",
+    )
+    if recent_matches:
+        return recent_matches
     project_dir = discover_project_dir_from_title(window.title)
     if project_dir is None:
         return []
@@ -476,17 +580,56 @@ def build_pcb_state_text(pcb_path: Path | None) -> str:
 
     try:
         board = pcbnew.LoadBoard(str(pcb_path))
-        layers = board.GetCopperLayerCount()
-        footprint_count = len(list(board.GetFootprints()))
-        via_count = sum(1 for track in board.GetTracks() if isinstance(track, pcbnew.PCB_VIA))
     except Exception as exc:
         logging.debug("Unable to load PCB details from %s: %s", pcb_path, exc)
         return "Editing PCB"
 
-    return (
-        f"{layers} Layers | {format_compact_count(footprint_count)} parts"
-        f" | {format_compact_count(via_count)} vias"
-    )
+    try:
+        layers = board.GetCopperLayerCount()
+    except Exception:
+        layers = None
+
+    try:
+        footprint_count = len(list(board.GetFootprints()))
+    except Exception:
+        footprint_count = None
+
+    try:
+        all_tracks = list(board.GetTracks())
+        via_count = sum(1 for track in all_tracks if isinstance(track, pcbnew.PCB_VIA))
+        track_count = max(0, len(all_tracks) - via_count)
+    except Exception:
+        track_count = None
+        via_count = None
+
+    try:
+        drawing_count = len(list(board.GetDrawings()))
+    except Exception:
+        drawing_count = 0
+
+    try:
+        zone_count = int(board.GetAreaCount())
+    except Exception:
+        zone_count = 0
+
+    item_count = None
+    if footprint_count is not None and track_count is not None and via_count is not None:
+        item_count = footprint_count + track_count + via_count + drawing_count + zone_count
+
+    stats: list[str] = []
+    if item_count is not None:
+        stats.append(f"{format_compact_count(item_count)} Items")
+    if track_count is not None:
+        stats.append(f"{format_compact_count(track_count)} Tracks")
+    if via_count is not None:
+        stats.append(f"{format_compact_count(via_count)} Vias")
+    if layers is not None:
+        stats.append(f"{layers} Layers")
+
+    if stats:
+        return " | ".join(stats)
+
+    return "Editing PCB"
 
 
 def count_custom_labels_in_schematics(schematic_files: list[Path]) -> int | None:
@@ -578,7 +721,10 @@ def build_presence_details(snapshot: ActivitySnapshot) -> str:
     if snapshot.editor is EditorType.GENERIC:
         return "KiCad"
     editor_label = "PCB" if snapshot.editor is EditorType.PCB else "SCH"
-    return truncate_presence_text(f"{editor_label}: {snapshot.display_name}", DETAILS_TEXT_LIMIT)
+    return truncate_presence_text(
+        f"KiCad {editor_label}: {snapshot.display_name}",
+        DETAILS_TEXT_LIMIT,
+    )
 
 
 def build_presence_state(snapshot: ActivitySnapshot, is_idle: bool) -> str:
