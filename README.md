@@ -14,9 +14,12 @@ Then install `Discord RPC for KiCad` from the list and apply the pending changes
 
 ## What The PCM Package Installs
 
-The KiCad PCM package installs a self-contained KiCad plugin that starts Discord Rich Presence automatically after KiCad reloads the plugin on startup.
+The KiCad PCM package installs two pieces:
 
-No separate bridge process or manual `pip install` step is required for normal KiCad use.
+- A KiCad preferences plugin, available from the PCB Editor.
+- A background watcher script that is registered in Windows startup and keeps Discord Rich Presence active for the KiCad project manager, schematic editor, and PCB editor.
+
+No separate manual `pip install` step is required for normal KiCad use.
 
 ## Privacy Preferences
 
@@ -39,7 +42,7 @@ If an older repo-local `config.json` exists, it is copied there automatically th
 
 ## Applying Preference Changes
 
-Changes from the preferences dialog are picked up automatically while KiCad stays open.
+Changes from the preferences dialog are picked up automatically by the watcher while KiCad stays open.
 
 ## Rebuild The PCM Files
 
@@ -51,4 +54,4 @@ This rebuilds:
 
 - `repository.json`
 - `packages.json`
-- `pcm-artifacts/discord-rpc-for-kicad-v1.0.0-pcm.zip`
+- `pcm-artifacts/discord-rpc-for-kicad-v1.0.1-pcm.zip`

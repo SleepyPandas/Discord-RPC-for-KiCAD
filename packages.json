@@ -3,8 +3,8 @@
     {
       "$schema": "https://go.kicad.org/pcm/schemas/v2",
       "name": "Discord RPC for KiCad",
-      "description": "Self-contained KiCad 10 Discord Rich Presence plugin with privacy controls.",
-      "description_full": "Installs the KiCad-side Discord Rich Presence plugin and preferences dialog.\n\nAfter KiCad restarts, the plugin starts Rich Presence automatically from inside KiCad, so no separate bridge process or manual Python dependency setup is required.",
+      "description": "KiCad 10 Discord Rich Presence plugin with a startup watcher and privacy controls.",
+      "description_full": "Installs the KiCad preferences plugin plus a background watcher that starts from Windows startup and tracks KiCad windows.\n\nAfter the plugin has been loaded once, the watcher keeps Discord Rich Presence available for the KiCad project manager, schematic editor, and PCB editor without a separate manual bridge setup.",
       "identifier": "com.github.sleepypandas.discord-rpc-for-kicad",
       "type": "plugin",
       "author": {
@@ -34,17 +34,17 @@
       ],
       "versions": [
         {
-          "version": "1.0.0",
+          "version": "1.0.1",
           "status": "stable",
           "kicad_version": "10.0",
           "runtime": "swig",
           "platforms": [
             "windows"
           ],
-          "download_url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/discord-rpc-for-kicad-v1.0.0-pcm.zip",
-          "download_sha256": "9c31533124cc8171d073c447cfe9f54a9385eaa103ec845ef05670ac44c703c4",
-          "download_size": 21739,
-          "install_size": 80671
+          "download_url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/discord-rpc-for-kicad-v1.0.1-pcm.zip",
+          "download_sha256": "676c46342317c2db2976b30f0098a0864fdfb5d72716ddadbbbb6cdbf1c71acb",
+          "download_size": 23514,
+          "install_size": 87859
         }
       ]
     }

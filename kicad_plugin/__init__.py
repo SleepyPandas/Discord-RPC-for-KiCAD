@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .preferences import show_preferences_dialog
-from .runtime import ensure_runtime_started
+from .runtime import ensure_plugin_bootstrap
 
 try:
     import pcbnew  # type: ignore[import-not-found]
@@ -39,14 +39,12 @@ else:
 
 
 def register_plugin() -> DiscordRpcPreferencesPlugin | None:
-    if pcbnew is None:
-        return None
-
-    plugin = DiscordRpcPreferencesPlugin()
-    plugin.register()
-    if wx is not None:
-        wx.CallAfter(ensure_runtime_started)
+    plugin: DiscordRpcPreferencesPlugin | None = None
+    if pcbnew is not None:
+        plugin = DiscordRpcPreferencesPlugin()
+        plugin.register()
     return plugin
 
 
 PLUGIN = register_plugin()
+ensure_plugin_bootstrap()
