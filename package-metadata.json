@@ -1,8 +1,8 @@
 {
   "$schema": "https://go.kicad.org/pcm/schemas/v2",
   "name": "Discord RPC for KiCad",
-  "description": "KiCad 10 companion plugin for Discord Rich Presence privacy settings.",
-  "description_full": "Installs the KiCad-side preferences dialog for the Discord RPC for KiCad bridge.\n\nThis PCM package provides the privacy settings action plugin. The standalone bridge process still needs to be run separately to publish Rich Presence updates to Discord.",
+  "description": "Self-contained KiCad 10 Discord Rich Presence plugin with privacy controls.",
+  "description_full": "Installs the KiCad-side Discord Rich Presence plugin and preferences dialog.\n\nAfter KiCad restarts, the plugin starts Rich Presence automatically from inside KiCad, so no separate bridge process or manual Python dependency setup is required.",
   "identifier": "com.github.sleepypandas.discord-rpc-for-kicad",
   "type": "plugin",
   "author": {
@@ -32,7 +32,7 @@
   ],
   "versions": [
     {
-      "version": "1.0.1",
+      "version": "1.0.0",
       "status": "stable",
       "kicad_version": "10.0",
       "runtime": "swig",

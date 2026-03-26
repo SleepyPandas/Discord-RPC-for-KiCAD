@@ -14,14 +14,9 @@ Then install `Discord RPC for KiCad` from the list and apply the pending changes
 
 ## What The PCM Package Installs
 
-The KiCad PCM package installs the KiCad-side preferences plugin.
+The KiCad PCM package installs a self-contained KiCad plugin that starts Discord Rich Presence automatically after KiCad reloads the plugin on startup.
 
-The standalone Discord Rich Presence bridge is still a separate Python process that you run outside KiCad.
-
-## Run The Bridge
-
-1. Install the Python dependencies with `pip install -r requirements.txt`.
-2. Start the bridge with `python main.py`.
+No separate bridge process or manual `pip install` step is required for normal KiCad use.
 
 ## Privacy Preferences
 
@@ -34,7 +29,7 @@ The preferences dialog lets you:
 
 ## Shared Configuration
 
-The plugin and the standalone bridge now share the same user config file.
+The plugin stores its settings in the same user config file location used by the standalone bridge.
 
 On Windows the config file is stored at:
 
@@ -42,9 +37,9 @@ On Windows the config file is stored at:
 
 If an older repo-local `config.json` exists, it is copied there automatically the first time the plugin or bridge runs.
 
-## Restart Requirement
+## Applying Preference Changes
 
-The bridge reads the config when it starts. After changing Privacy Mode from the KiCad preferences dialog, restart the Discord RPC bridge for the new setting to apply.
+Changes from the preferences dialog are picked up automatically while KiCad stays open.
 
 ## Rebuild The PCM Files
 
@@ -56,4 +51,4 @@ This rebuilds:
 
 - `repository.json`
 - `packages.json`
-- `pcm-artifacts/discord-rpc-for-kicad-v1.0.1-pcm.zip`
+- `pcm-artifacts/discord-rpc-for-kicad-v1.0.0-pcm.zip`
