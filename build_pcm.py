@@ -15,12 +15,9 @@ PACKAGE_METADATA_PATH = REPO_ROOT / "package-metadata.json"
 PACKAGE_ARTIFACTS_DIR = REPO_ROOT / "pcm-artifacts"
 REPOSITORY_JSON_PATH = REPO_ROOT / "repository.json"
 PACKAGES_JSON_PATH = REPO_ROOT / "packages.json"
-PACKAGE_FILE_MAP = {
-    REPO_ROOT / "kicad_plugin" / "__init__.py": Path("plugins/__init__.py"),
-    REPO_ROOT / "kicad_plugin" / "config_io.py": Path("plugins/config_io.py"),
-    REPO_ROOT / "kicad_plugin" / "preferences.py": Path("plugins/preferences.py"),
-    REPO_ROOT / "kicad_plugin" / "shared_config.py": Path("plugins/shared_config.py"),
-}
+PLUGIN_SOURCE_DIR = REPO_ROOT / "kicad_plugin"
+IGNORED_PLUGIN_PARTS = {"__pycache__"}
+IGNORED_PLUGIN_SUFFIXES = {".pyc", ".pyo"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,10 +44,27 @@ def get_package_archive_name(metadata: dict) -> str:
     return f"discord-rpc-for-kicad-v{get_version(metadata)}-pcm.zip"
 
 
+def iter_package_source_paths() -> list[tuple[Path, Path]]:
+    package_sources: list[tuple[Path, Path]] = []
+    for source_path in sorted(PLUGIN_SOURCE_DIR.rglob("*")):
+        if not source_path.is_file():
+            continue
+        if any(part in IGNORED_PLUGIN_PARTS for part in source_path.parts):
+            continue
+        if source_path.suffix in IGNORED_PLUGIN_SUFFIXES:
+            continue
+
+        package_sources.append(
+            (source_path, Path("plugins") / source_path.relative_to(PLUGIN_SOURCE_DIR))
+        )
+
+    return package_sources
+
+
 def copy_package_sources(staging_root: Path) -> int:
     install_size = 0
 
-    for source_path, destination_relative_path in sorted(PACKAGE_FILE_MAP.items()):
+    for source_path, destination_relative_path in iter_package_source_paths():
         destination_path = staging_root / destination_relative_path
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, destination_path)

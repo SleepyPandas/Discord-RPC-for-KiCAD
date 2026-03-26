@@ -226,3 +226,8 @@ __marimo__/
 # Local OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Vendored runtime packaging metadata
+kicad_plugin/vendor/pypresence-*.dist-info/*
+!kicad_plugin/vendor/pypresence-*.dist-info/licenses/
+!kicad_plugin/vendor/pypresence-*.dist-info/licenses/LICENSE
