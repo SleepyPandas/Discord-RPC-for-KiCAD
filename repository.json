@@ -8,9 +8,9 @@
   },
   "name": "Discord RPC for KiCad repository",
   "packages": {
-    "sha256": "f6143e678fd65e5db86dcb9bde3cea53638cbd6cae0829641a673e5a285fb469",
-    "update_time_utc": "2026-03-26 01:17:35",
-    "update_timestamp": 1774487855,
+    "sha256": "824e2a4b1cdde320e16c8ea2d5e8b086db57d3371154d5c55382d31bc7709fc7",
+    "update_time_utc": "2026-03-26 03:19:52",
+    "update_timestamp": 1774495192,
     "url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/packages.json"
   },
   "schema_version": 2
