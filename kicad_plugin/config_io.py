@@ -10,7 +10,6 @@ from .shared_config import (
 )
 
 DEFAULT_HIDDEN_PROJECT_TEXT = "Working on a generic project"
-LEGACY_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 
 class ConfigError(RuntimeError):
@@ -37,10 +36,7 @@ def _normalize_hidden_text(value: str) -> str:
 def load_privacy_settings(config_path: Path | None = None) -> PrivacySettings:
     resolved_path = config_path or get_config_path()
     try:
-        raw_config = load_config_document(
-            resolved_path,
-            legacy_candidates=(LEGACY_CONFIG_PATH,),
-        )
+        raw_config = load_config_document(resolved_path)
     except ValueError as exc:
         raise ConfigError(f"Config file is not valid JSON: {exc}") from exc
     except OSError as exc:
@@ -61,10 +57,7 @@ def save_privacy_settings(
 ) -> Path:
     resolved_path = config_path or get_config_path()
     try:
-        raw_config = load_config_document(
-            resolved_path,
-            legacy_candidates=(LEGACY_CONFIG_PATH,),
-        )
+        raw_config = load_config_document(resolved_path)
     except ValueError as exc:
         raise ConfigError(f"Config file is not valid JSON: {exc}") from exc
     except OSError as exc:
