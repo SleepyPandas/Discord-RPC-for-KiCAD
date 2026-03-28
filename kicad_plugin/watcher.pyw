@@ -106,7 +106,7 @@ class AppConfig:
     discord_client_id: str
     hide_filename: bool = False
     hidden_project_text: str = DEFAULT_HIDDEN_TEXT
-    poll_interval_seconds: int = 5
+    poll_interval_seconds: int = 4
     idle_threshold_seconds: int = 300
     large_image: str = ""
     large_text: str = ""
@@ -128,7 +128,7 @@ class AppConfig:
                 raw_config.get("hidden_project_text", DEFAULT_HIDDEN_TEXT)
             ).strip()
             or DEFAULT_HIDDEN_TEXT,
-            poll_interval_seconds=max(3, int(raw_config.get("poll_interval_seconds", 5))),
+            poll_interval_seconds=max(3, int(raw_config.get("poll_interval_seconds", 4))),
             idle_threshold_seconds=max(60, int(raw_config.get("idle_threshold_seconds", 300))),
             large_image=str(raw_config.get("large_image", "")).strip(),
             large_text=str(raw_config.get("large_text", "")).strip(),
@@ -883,7 +883,7 @@ def main() -> int:
     last_selection_log_key: tuple[str, int | None, str | None, str | None] | None = None
     last_change_time = time.monotonic()
     session_start_timestamp: int | None = None
-    sleep_seconds = 5
+    sleep_seconds = 4
 
     try:
         while True:
