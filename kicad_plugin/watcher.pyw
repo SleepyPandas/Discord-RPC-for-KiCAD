@@ -51,7 +51,12 @@ WINDOW_TITLE_SPLIT_PATTERN = re.compile(r"\s+(?:-|\u2013|\u2014)\s+")
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 mutex_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 user32.GetForegroundWindow.restype = wintypes.HWND
+user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+user32.EnumWindows.restype = wintypes.BOOL
+user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.IsWindowVisible.restype = wintypes.BOOL
 user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
 user32.GetWindowTextLengthW.restype = ctypes.c_int
 user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
@@ -133,6 +138,7 @@ class AppConfig:
 
 @dataclass(frozen=True)
 class WindowInfo:
+    hwnd: int
     process_name: str
     process_id: int | None
     title: str
@@ -330,23 +336,64 @@ def is_kicad_process_name(process_name: str) -> bool:
     return process_name.lower() in {"kicad.exe", "kicad", "pcbnew.exe", "pcbnew", "eeschema.exe", "eeschema"}
 
 
-def detect_active_window() -> WindowInfo | None:
-    hwnd = user32.GetForegroundWindow()
+def detect_editor_type(process_name: str, title: str) -> EditorType | None:
+    if not is_kicad_process_name(process_name):
+        return None
+
+    lowered_title = title.lower()
+    if any(marker in lowered_title for marker in ("schematic editor", "eeschema", ".kicad_sch")):
+        return EditorType.SCHEMATIC
+    if any(marker in lowered_title for marker in ("pcb editor", "pcbnew", ".kicad_pcb")):
+        return EditorType.PCB
+    return None
+
+
+def get_window_process_id(hwnd: wintypes.HWND) -> int | None:
     if not hwnd:
         return None
+
     process_id = wintypes.DWORD()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-    resolved_process_id = int(process_id.value) if process_id.value else None
+    return int(process_id.value) if process_id.value else None
+
+
+def get_window_info(hwnd: wintypes.HWND) -> WindowInfo | None:
+    if not hwnd:
+        return None
+
+    resolved_process_id = get_window_process_id(hwnd)
     process_name = get_process_name(resolved_process_id)
     title = get_window_text(hwnd)
-    lowered_title = title.lower()
-    editor = None
-    if is_kicad_process_name(process_name):
-        if any(marker in lowered_title for marker in ("schematic editor", "eeschema", ".kicad_sch")):
-            editor = EditorType.SCHEMATIC
-        elif any(marker in lowered_title for marker in ("pcb editor", "pcbnew", ".kicad_pcb")):
-            editor = EditorType.PCB
-    return WindowInfo(process_name=process_name, process_id=resolved_process_id, title=title, editor=editor)
+    return WindowInfo(
+        hwnd=int(hwnd),
+        process_name=process_name,
+        process_id=resolved_process_id,
+        title=title,
+        editor=detect_editor_type(process_name, title),
+    )
+
+
+def detect_active_window() -> WindowInfo | None:
+    return get_window_info(user32.GetForegroundWindow())
+
+
+def enumerate_visible_kicad_windows() -> list[WindowInfo]:
+    windows: list[WindowInfo] = []
+
+    @WNDENUMPROC
+    def callback(hwnd: wintypes.HWND, _lparam: wintypes.LPARAM) -> bool:
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        window = get_window_info(hwnd)
+        if window is None or not is_kicad_process_name(window.process_name):
+            return True
+
+        windows.append(window)
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return windows
 
 
 def any_kicad_running() -> bool:
