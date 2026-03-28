@@ -156,6 +156,13 @@ class ActivitySnapshot:
     fingerprint: str
 
 
+@dataclass(frozen=True)
+class SnapshotSelection:
+    snapshot: ActivitySnapshot | None
+    tracked_editor_hwnd: int | None
+    reason: str
+
+
 class WatcherStateWriter:
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -705,34 +712,34 @@ def select_editor_window(
     active_window: WindowInfo | None,
     kicad_windows: list[WindowInfo],
     last_active_editor_hwnd: int | None,
-) -> tuple[WindowInfo | None, int | None]:
+) -> tuple[WindowInfo | None, int | None, str]:
     editor_windows = [window for window in kicad_windows if is_editor_window(window)]
 
     if is_editor_window(active_window):
         assert active_window is not None
-        return active_window, active_window.hwnd
+        return active_window, active_window.hwnd, "active_editor"
 
     if last_active_editor_hwnd is not None:
         for window in editor_windows:
             if window.hwnd == last_active_editor_hwnd:
-                return window, window.hwnd
+                return window, window.hwnd, "sticky_last_active_editor"
 
     if len(editor_windows) == 1:
-        return editor_windows[0], editor_windows[0].hwnd
+        return editor_windows[0], editor_windows[0].hwnd, "only_open_editor"
 
     if editor_windows:
-        return editor_windows[0], editor_windows[0].hwnd
+        return editor_windows[0], editor_windows[0].hwnd, "topmost_open_editor"
 
-    return None, None
+    return None, None, "no_open_editor"
 
 
 def build_snapshot(
     config: AppConfig,
     last_active_editor_hwnd: int | None,
-) -> tuple[ActivitySnapshot | None, int | None]:
+) -> SnapshotSelection:
     active_window = detect_active_window()
     kicad_windows = enumerate_visible_kicad_windows()
-    selected_window, tracked_editor_hwnd = select_editor_window(
+    selected_window, tracked_editor_hwnd, selection_reason = select_editor_window(
         active_window,
         kicad_windows,
         last_active_editor_hwnd,
@@ -740,13 +747,57 @@ def build_snapshot(
 
     if selected_window is not None:
         if selected_window.editor is EditorType.PCB:
-            return build_pcb_snapshot(selected_window, config), tracked_editor_hwnd
-        return build_schematic_snapshot(selected_window, config), tracked_editor_hwnd
+            return SnapshotSelection(
+                snapshot=build_pcb_snapshot(selected_window, config),
+                tracked_editor_hwnd=tracked_editor_hwnd,
+                reason=selection_reason,
+            )
+        return SnapshotSelection(
+            snapshot=build_schematic_snapshot(selected_window, config),
+            tracked_editor_hwnd=tracked_editor_hwnd,
+            reason=selection_reason,
+        )
 
     if kicad_windows or any_kicad_running():
-        return build_background_snapshot(), None
+        return SnapshotSelection(
+            snapshot=build_background_snapshot(),
+            tracked_editor_hwnd=None,
+            reason="background_no_editor",
+        )
 
-    return None, None
+    return SnapshotSelection(
+        snapshot=None,
+        tracked_editor_hwnd=None,
+        reason="kicad_closed",
+    )
+
+
+def get_selection_log_key(selection: SnapshotSelection) -> tuple[str, int | None, str | None, str | None]:
+    snapshot = selection.snapshot
+    if snapshot is None:
+        return (selection.reason, selection.tracked_editor_hwnd, None, None)
+
+    return (
+        selection.reason,
+        selection.tracked_editor_hwnd,
+        snapshot.editor.value,
+        snapshot.project_name,
+    )
+
+
+def log_selection_change(selection: SnapshotSelection) -> None:
+    snapshot = selection.snapshot
+    if snapshot is None:
+        logging.info("Watcher selection=%s", selection.reason)
+        return
+
+    logging.info(
+        "Watcher selection=%s editor=%s hwnd=%s project=%s",
+        selection.reason,
+        snapshot.editor.value,
+        selection.tracked_editor_hwnd,
+        snapshot.project_name,
+    )
 
 
 def build_background_snapshot() -> ActivitySnapshot:
@@ -829,6 +880,7 @@ def main() -> int:
     discord_client: DiscordRpcClient | None = None
     last_snapshot: ActivitySnapshot | None = None
     last_active_editor_hwnd: int | None = None
+    last_selection_log_key: tuple[str, int | None, str | None, str | None] | None = None
     last_change_time = time.monotonic()
     session_start_timestamp: int | None = None
     sleep_seconds = 5
@@ -844,10 +896,18 @@ def main() -> int:
                 else:
                     discord_client.set_config(config)
 
-                snapshot, last_active_editor_hwnd = build_snapshot(
+                selection = build_snapshot(
                     config,
                     last_active_editor_hwnd,
                 )
+                snapshot = selection.snapshot
+                last_active_editor_hwnd = selection.tracked_editor_hwnd
+
+                selection_log_key = get_selection_log_key(selection)
+                if selection_log_key != last_selection_log_key:
+                    log_selection_change(selection)
+                    last_selection_log_key = selection_log_key
+
                 if snapshot is None:
                     if discord_client is not None:
                         discord_client.clear()
