@@ -16,6 +16,7 @@ PACKAGE_ARTIFACTS_DIR = REPO_ROOT / "pcm-artifacts"
 REPOSITORY_JSON_PATH = REPO_ROOT / "repository.json"
 PACKAGES_JSON_PATH = REPO_ROOT / "packages.json"
 PLUGIN_SOURCE_DIR = REPO_ROOT / "kicad_plugin"
+ICON_SOURCE_PATH = REPO_ROOT / "icon.png"
 IGNORED_PLUGIN_PARTS = {"__pycache__"}
 IGNORED_PLUGIN_SUFFIXES = {".pyc", ".pyo"}
 DISALLOWED_ARCHIVE_METADATA_FIELDS = {
@@ -126,6 +127,12 @@ def copy_package_sources(staging_root: Path) -> int:
         destination_path = staging_root / destination_relative_path
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, destination_path)
+        install_size += destination_path.stat().st_size
+
+    if ICON_SOURCE_PATH.exists():
+        destination_path = staging_root / "resources" / "icon.png"
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ICON_SOURCE_PATH, destination_path)
         install_size += destination_path.stat().st_size
 
     return install_size
