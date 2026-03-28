@@ -640,11 +640,6 @@ def build_pcb_state_text(pcb_path: Path | None) -> str:
         layers = None
 
     try:
-        footprint_count = len(list(board.GetFootprints()))
-    except Exception:
-        footprint_count = None
-
-    try:
         all_tracks = list(board.GetTracks())
         via_count = sum(1 for track in all_tracks if isinstance(track, pcbnew.PCB_VIA))
         track_count = max(0, len(all_tracks) - via_count)
@@ -652,23 +647,7 @@ def build_pcb_state_text(pcb_path: Path | None) -> str:
         track_count = None
         via_count = None
 
-    try:
-        drawing_count = len(list(board.GetDrawings()))
-    except Exception:
-        drawing_count = 0
-
-    try:
-        zone_count = int(board.GetAreaCount())
-    except Exception:
-        zone_count = 0
-
-    item_count = None
-    if footprint_count is not None and track_count is not None and via_count is not None:
-        item_count = footprint_count + track_count + via_count + drawing_count + zone_count
-
     stats: list[str] = []
-    if item_count is not None:
-        stats.append(f"{format_compact_count(item_count)} Items")
     if track_count is not None:
         stats.append(f"{format_compact_count(track_count)} Tracks")
     if via_count is not None:
