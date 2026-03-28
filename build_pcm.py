@@ -17,6 +17,7 @@ REPOSITORY_JSON_PATH = REPO_ROOT / "repository.json"
 PACKAGES_JSON_PATH = REPO_ROOT / "packages.json"
 PLUGIN_SOURCE_DIR = REPO_ROOT / "kicad_plugin"
 ICON_SOURCE_PATH = REPO_ROOT / "icon.png"
+RESOURCES_ARCHIVE_NAME = "resources.zip"
 IGNORED_PLUGIN_PARTS = {"__pycache__"}
 IGNORED_PLUGIN_SUFFIXES = {".pyc", ".pyo"}
 DISALLOWED_ARCHIVE_METADATA_FIELDS = {
@@ -129,12 +130,6 @@ def copy_package_sources(staging_root: Path) -> int:
         shutil.copy2(source_path, destination_path)
         install_size += destination_path.stat().st_size
 
-    if ICON_SOURCE_PATH.exists():
-        destination_path = staging_root / "resources" / "icon.png"
-        destination_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ICON_SOURCE_PATH, destination_path)
-        install_size += destination_path.stat().st_size
-
     return install_size
 
 
@@ -155,6 +150,21 @@ def create_package_archive(staging_root: Path, archive_path: Path) -> None:
         for path in sorted(staging_root.rglob("*")):
             if path.is_file():
                 archive.write(path, path.relative_to(staging_root).as_posix())
+
+
+def create_resources_archive(metadata: dict) -> Path | None:
+    archive_path = PACKAGE_ARTIFACTS_DIR / RESOURCES_ARCHIVE_NAME
+    if not ICON_SOURCE_PATH.is_file():
+        archive_path.unlink(missing_ok=True)
+        return None
+
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    resource_path = f"{metadata['identifier']}/icon.png"
+
+    with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.write(ICON_SOURCE_PATH, resource_path)
+
+    return archive_path
 
 
 def sha256_hex(path: Path) -> str:
@@ -204,9 +214,10 @@ def build_repository_document(
     update_timestamp: int,
     update_time_utc: str,
     base_url: str,
+    resources_sha256: str | None = None,
 ) -> dict:
     maintainer = metadata.get("maintainer") or metadata["author"]
-    return {
+    repository_document = {
         "$schema": "https://go.kicad.org/pcm/schemas/v2#/definitions/Repository",
         "maintainer": maintainer,
         "name": "Discord RPC for KiCad repository",
@@ -218,6 +229,16 @@ def build_repository_document(
         },
         "schema_version": 2,
     }
+
+    if resources_sha256 is not None:
+        repository_document["resources"] = {
+            "sha256": resources_sha256,
+            "update_time_utc": update_time_utc,
+            "update_timestamp": update_timestamp,
+            "url": f"{base_url}/pcm-artifacts/{RESOURCES_ARCHIVE_NAME}",
+        }
+
+    return repository_document
 
 
 def main() -> None:
@@ -235,8 +256,12 @@ def main() -> None:
         install_size += write_package_metadata(staging_root, metadata)
         create_package_archive(staging_root, archive_path)
 
+    resources_archive_path = create_resources_archive(metadata)
     archive_size = archive_path.stat().st_size
     archive_sha256 = sha256_hex(archive_path)
+    resources_sha256 = None
+    if resources_archive_path is not None:
+        resources_sha256 = sha256_hex(resources_archive_path)
 
     packages_document = build_packages_document(
         metadata=metadata,
@@ -255,6 +280,7 @@ def main() -> None:
         update_timestamp=int(now.timestamp()),
         update_time_utc=now.strftime("%Y-%m-%d %H:%M:%S"),
         base_url=base_url,
+        resources_sha256=resources_sha256,
     )
     write_json(REPOSITORY_JSON_PATH, repository_document)
     remove_stale_archives(archive_name)

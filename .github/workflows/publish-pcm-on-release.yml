@@ -209,6 +209,25 @@ jobs:
                   f"packages.json archive size {expected_archive_size} does not match "
                   f"{archive_path.name} size {actual_archive_size}."
               )
+
+          resources = repository.get("resources")
+          resources_path = Path("pcm-artifacts") / "resources.zip"
+          if resources is None:
+              if resources_path.exists():
+                  raise SystemExit(
+                      "resources.zip exists but repository.json does not advertise repository resources."
+                  )
+          else:
+              if not resources_path.is_file():
+                  raise SystemExit(f"Expected repository resources archive {resources_path} was not created.")
+
+              expected_resources_hash = resources["sha256"]
+              actual_resources_hash = sha256_hex(resources_path)
+              if expected_resources_hash != actual_resources_hash:
+                  raise SystemExit(
+                      f"repository.json resources hash {expected_resources_hash} does not match "
+                      f"{resources_path.name} hash {actual_resources_hash}."
+                  )
           PY
 
       - name: Upload PCM archive to release
@@ -228,6 +247,11 @@ jobs:
           cp source/repository.json publish/repository.json
           cp source/packages.json publish/packages.json
           cp "source/pcm-artifacts/${ARCHIVE_NAME}" "publish/pcm-artifacts/${ARCHIVE_NAME}"
+          if [[ -f source/pcm-artifacts/resources.zip ]]; then
+            cp source/pcm-artifacts/resources.zip publish/pcm-artifacts/resources.zip
+          else
+            rm -f publish/pcm-artifacts/resources.zip
+          fi
 
       - name: Commit and push PCM updates
         working-directory: publish

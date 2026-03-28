@@ -42,9 +42,9 @@
             "windows"
           ],
           "download_url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/discord-rpc-for-kicad-v1.1.3-pcm.zip",
-          "download_sha256": "3272111f53f5edc6bf11e880351e38cfcd9e3b6c13bc088f713b96dc9de263c2",
-          "download_size": 27825,
-          "install_size": 97887
+          "download_sha256": "1184c4117a0e7c47179b071f500ec61a5dde8a480a62f67cccd2d4759b4b3675",
+          "download_size": 25409,
+          "install_size": 98103
         }
       ]
     }
