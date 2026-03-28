@@ -12,7 +12,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hide_filename": False,
     "hidden_project_text": "Working on a generic project",
     "poll_interval_seconds": 4,
-    "idle_threshold_seconds": 300,
     "large_image": "large_image",
     "large_text": "KiCad 10",
     "log_level": "INFO",
