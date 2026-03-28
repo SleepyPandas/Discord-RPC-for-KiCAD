@@ -38,7 +38,6 @@ CONFIG_PATH = get_config_path()
 CONFIG_DIRECTORY = get_config_directory()
 WATCHER_LOG_PATH = CONFIG_DIRECTORY / "watcher.log"
 WATCHER_STATE_PATH = CONFIG_DIRECTORY / "watcher-state.json"
-LEGACY_CONFIG_PATH = PLUGIN_DIR.parent / "config.json"
 WATCHER_MUTEX_NAME = "Local\\DiscordRpcForKiCadWatcher"
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 TH32CS_SNAPPROCESS = 0x00000002
@@ -114,10 +113,7 @@ class AppConfig:
 
     @classmethod
     def load(cls) -> "AppConfig":
-        raw_config = load_config_document(
-            CONFIG_PATH,
-            legacy_candidates=(LEGACY_CONFIG_PATH,),
-        )
+        raw_config = load_config_document(CONFIG_PATH)
         client_id = str(raw_config.get("discord_client_id", "")).strip()
         if not client_id or client_id == "YOUR_DISCORD_APPLICATION_CLIENT_ID":
             raise ValueError(f"{CONFIG_PATH} must contain a valid Discord application client ID.")

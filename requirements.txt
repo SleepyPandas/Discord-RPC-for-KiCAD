@@ -1,5 +1,0 @@
-# Optional dependencies for local development or for running the legacy
-# standalone bridge directly from this repository.
-kicad-python
-pypresence
-psutil

@@ -50,6 +50,9 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Install schema validator dependency
+        run: python -m pip install --disable-pip-version-check jsonschema
+
       - name: Validate release version
         id: metadata
         working-directory: source
@@ -86,6 +89,77 @@ jobs:
       - name: Build PCM files
         working-directory: source
         run: python build_pcm.py
+
+      - name: Validate generated KiCad schema documents
+        working-directory: source
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          from pathlib import Path
+
+          from jsonschema import Draft7Validator
+
+          schema_url = "https://gitlab.com/kicad/code/kicad/-/raw/master/kicad/pcm/schemas/pcm.v2.schema.json"
+          with urllib.request.urlopen(schema_url, timeout=30) as response:
+            root_schema = json.loads(response.read().decode("utf-8"))
+
+          definitions = root_schema["definitions"]
+
+          def build_definition_schema(definition_name: str) -> dict:
+            return {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "$ref": f"#/definitions/{definition_name}",
+              "definitions": definitions,
+            }
+
+          def load_json(path: str) -> dict:
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+
+          def validate_document(document: dict, schema: dict, label: str) -> None:
+            validator = Draft7Validator(schema)
+            errors = sorted(validator.iter_errors(document), key=lambda err: err.path)
+            if not errors:
+              return
+            lines = [f"{label} failed KiCad schema validation:"]
+            for err in errors[:10]:
+              location = "$"
+              if err.path:
+                location += "." + ".".join(str(part) for part in err.path)
+              lines.append(f"- {location}: {err.message}")
+            raise SystemExit("\n".join(lines))
+
+          package_metadata = load_json("package-metadata.json")
+          packages_document = load_json("packages.json")
+          repository_document = load_json("repository.json")
+
+          validate_document(
+            package_metadata,
+            build_definition_schema("Package"),
+            "package-metadata.json",
+          )
+          validate_document(
+            packages_document,
+            build_definition_schema("PackageArray"),
+            "packages.json",
+          )
+          validate_document(
+            repository_document,
+            build_definition_schema("Repository"),
+            "repository.json",
+          )
+
+          package_runtime = package_metadata["versions"][0].get("runtime")
+          packages_runtime = packages_document["packages"][0]["versions"][0].get("runtime")
+          if package_runtime not in {"swig", "ipc"}:
+            raise SystemExit(
+              "package-metadata.json versions[0].runtime must be explicitly set to 'swig' or 'ipc'."
+            )
+          if packages_runtime != package_runtime:
+            raise SystemExit(
+              "packages.json runtime does not match package-metadata.json runtime."
+            )
+          PY
 
       - name: Verify generated hashes
         working-directory: source
@@ -150,6 +224,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p publish/pcm-artifacts
+          find publish/pcm-artifacts -maxdepth 1 -type f -name 'discord-rpc-for-kicad-v*-pcm.zip' ! -name "$ARCHIVE_NAME" -delete
           cp source/repository.json publish/repository.json
           cp source/packages.json publish/packages.json
           cp "source/pcm-artifacts/${ARCHIVE_NAME}" "publish/pcm-artifacts/${ARCHIVE_NAME}"
@@ -165,6 +240,6 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repository.json packages.json pcm-artifacts
+          git add -A -- repository.json packages.json pcm-artifacts
           git commit -m "chore: publish PCM files for v${{ steps.metadata.outputs.version }}"
           git push origin HEAD:${{ steps.refs.outputs.publish_branch }}
