@@ -8,16 +8,16 @@
   },
   "name": "Discord RPC for KiCad repository",
   "packages": {
-    "sha256": "0faa7089d7fe29288e5ce0f341380b7f8ed941bf0bf567fc9c00b28a3862f47f",
-    "update_time_utc": "2026-03-28 04:01:06",
-    "update_timestamp": 1774670466,
+    "sha256": "7a43faf6e477a43ae4adc7db42e630289174c2ae077769280cfbd1d327dccc0b",
+    "update_time_utc": "2026-03-28 20:26:56",
+    "update_timestamp": 1774729616,
     "url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/packages.json"
   },
   "schema_version": 2,
   "resources": {
     "sha256": "aafef1e8db7891cb905b2f1b0962e4361617699ea876702a3eeb0bb149be99d0",
-    "update_time_utc": "2026-03-28 04:01:06",
-    "update_timestamp": 1774670466,
+    "update_time_utc": "2026-03-28 20:26:56",
+    "update_timestamp": 1774729616,
     "url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/resources.zip"
   }
 }
