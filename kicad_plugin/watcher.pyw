@@ -106,7 +106,6 @@ class AppConfig:
     hide_filename: bool = False
     hidden_project_text: str = DEFAULT_HIDDEN_TEXT
     poll_interval_seconds: int = 4
-    idle_threshold_seconds: int = 300
     large_image: str = ""
     large_text: str = ""
     log_level: str = "INFO"
@@ -125,7 +124,6 @@ class AppConfig:
             ).strip()
             or DEFAULT_HIDDEN_TEXT,
             poll_interval_seconds=max(3, int(raw_config.get("poll_interval_seconds", 4))),
-            idle_threshold_seconds=max(60, int(raw_config.get("idle_threshold_seconds", 300))),
             large_image=str(raw_config.get("large_image", "")).strip(),
             large_text=str(raw_config.get("large_text", "")).strip(),
             log_level=str(raw_config.get("log_level", "INFO")).strip().upper() or "INFO",
@@ -626,13 +624,13 @@ def discover_schematic_files(window: WindowInfo) -> list[Path]:
 
 def build_pcb_state_text(pcb_path: Path | None) -> str:
     if pcb_path is None or pcbnew is None:
-        return "Editing PCB"
+        return "PCB Open"
 
     try:
         board = pcbnew.LoadBoard(str(pcb_path))
     except Exception as exc:
         logging.debug("Unable to load PCB details from %s: %s", pcb_path, exc)
-        return "Editing PCB"
+        return "PCB Open"
 
     try:
         layers = board.GetCopperLayerCount()
@@ -658,7 +656,7 @@ def build_pcb_state_text(pcb_path: Path | None) -> str:
     if stats:
         return " | ".join(stats)
 
-    return "Editing PCB"
+    return "PCB Open"
 
 
 def count_custom_labels_in_schematics(schematic_files: list[Path]) -> int | None:
@@ -811,9 +809,9 @@ def build_schematic_snapshot(window: WindowInfo, config: AppConfig) -> ActivityS
         project_name = schematic_files[0].stem or project_name
     custom_net_count = count_custom_labels_in_schematics(schematic_files)
     state_text = (
-        f"Editing | {custom_net_count} Total Nets"
+        f"{custom_net_count} Total Nets"
         if custom_net_count is not None
-        else "Editing"
+        else "Schematic Open"
     )
     fingerprint = sha1_text(
         "|".join([window.title, state_text, *(f"{path}:{get_file_mtime_ns(path)}" for path in schematic_files)])
@@ -839,12 +837,10 @@ def build_presence_details(snapshot: ActivitySnapshot) -> str:
     )
 
 
-def build_presence_state(snapshot: ActivitySnapshot, is_idle: bool) -> str:
+def build_presence_state(snapshot: ActivitySnapshot) -> str:
     if snapshot.editor is EditorType.GENERIC:
         return "Open in background"
-    if not is_idle:
-        return truncate_presence_text(snapshot.state_text, STATE_TEXT_LIMIT)
-    return truncate_presence_text(f"Idle | {snapshot.state_text}", STATE_TEXT_LIMIT)
+    return truncate_presence_text(snapshot.state_text, STATE_TEXT_LIMIT)
 
 
 def main() -> int:
@@ -856,7 +852,6 @@ def main() -> int:
     last_snapshot: ActivitySnapshot | None = None
     last_active_editor_hwnd: int | None = None
     last_selection_log_key: tuple[str, int | None, str | None, str | None] | None = None
-    last_change_time = time.monotonic()
     session_start_timestamp: int | None = None
     sleep_seconds = 4
 
@@ -888,22 +883,19 @@ def main() -> int:
                         discord_client.clear()
                     last_snapshot = None
                     last_active_editor_hwnd = None
-                    last_change_time = time.monotonic()
                     session_start_timestamp = None
                     state_writer.write("waiting_for_kicad")
                 else:
                     if snapshot != last_snapshot:
                         last_snapshot = snapshot
-                        last_change_time = time.monotonic()
                         if session_start_timestamp is None:
                             session_start_timestamp = int(time.time())
 
-                    is_idle = (time.monotonic() - last_change_time) >= config.idle_threshold_seconds
                     payload: dict[str, Any] = {
                         "name": DEFAULT_APP_NAME,
                         "status_display_type": StatusDisplayType.NAME,
                         "details": build_presence_details(snapshot),
-                        "state": build_presence_state(snapshot, is_idle),
+                        "state": build_presence_state(snapshot),
                         "start": session_start_timestamp or int(time.time()),
                     }
                     if config.large_image:
