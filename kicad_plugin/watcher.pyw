@@ -697,17 +697,56 @@ def count_custom_labels_in_schematics(schematic_files: list[Path]) -> int | None
     return len(custom_labels) if readable_file_seen else None
 
 
-def build_snapshot(config: AppConfig) -> ActivitySnapshot | None:
-    window = detect_active_window()
-    if window is None:
-        return build_background_snapshot() if any_kicad_running() else None
-    if window.editor is EditorType.PCB:
-        return build_pcb_snapshot(window, config)
-    if window.editor is EditorType.SCHEMATIC:
-        return build_schematic_snapshot(window, config)
-    if is_kicad_process_name(window.process_name) or any_kicad_running():
-        return build_background_snapshot()
-    return None
+def is_editor_window(window: WindowInfo | None) -> bool:
+    return window is not None and window.editor in {EditorType.PCB, EditorType.SCHEMATIC}
+
+
+def select_editor_window(
+    active_window: WindowInfo | None,
+    kicad_windows: list[WindowInfo],
+    last_active_editor_hwnd: int | None,
+) -> tuple[WindowInfo | None, int | None]:
+    editor_windows = [window for window in kicad_windows if is_editor_window(window)]
+
+    if is_editor_window(active_window):
+        assert active_window is not None
+        return active_window, active_window.hwnd
+
+    if last_active_editor_hwnd is not None:
+        for window in editor_windows:
+            if window.hwnd == last_active_editor_hwnd:
+                return window, window.hwnd
+
+    if len(editor_windows) == 1:
+        return editor_windows[0], editor_windows[0].hwnd
+
+    if editor_windows:
+        return editor_windows[0], editor_windows[0].hwnd
+
+    return None, None
+
+
+def build_snapshot(
+    config: AppConfig,
+    last_active_editor_hwnd: int | None,
+) -> tuple[ActivitySnapshot | None, int | None]:
+    active_window = detect_active_window()
+    kicad_windows = enumerate_visible_kicad_windows()
+    selected_window, tracked_editor_hwnd = select_editor_window(
+        active_window,
+        kicad_windows,
+        last_active_editor_hwnd,
+    )
+
+    if selected_window is not None:
+        if selected_window.editor is EditorType.PCB:
+            return build_pcb_snapshot(selected_window, config), tracked_editor_hwnd
+        return build_schematic_snapshot(selected_window, config), tracked_editor_hwnd
+
+    if kicad_windows or any_kicad_running():
+        return build_background_snapshot(), None
+
+    return None, None
 
 
 def build_background_snapshot() -> ActivitySnapshot:
@@ -789,6 +828,7 @@ def main() -> int:
     state_writer = WatcherStateWriter(WATCHER_STATE_PATH)
     discord_client: DiscordRpcClient | None = None
     last_snapshot: ActivitySnapshot | None = None
+    last_active_editor_hwnd: int | None = None
     last_change_time = time.monotonic()
     session_start_timestamp: int | None = None
     sleep_seconds = 5
@@ -804,11 +844,15 @@ def main() -> int:
                 else:
                     discord_client.set_config(config)
 
-                snapshot = build_snapshot(config)
+                snapshot, last_active_editor_hwnd = build_snapshot(
+                    config,
+                    last_active_editor_hwnd,
+                )
                 if snapshot is None:
                     if discord_client is not None:
                         discord_client.clear()
                     last_snapshot = None
+                    last_active_editor_hwnd = None
                     last_change_time = time.monotonic()
                     session_start_timestamp = None
                     state_writer.write("waiting_for_kicad")
