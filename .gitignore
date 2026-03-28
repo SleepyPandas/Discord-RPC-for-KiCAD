@@ -231,5 +231,3 @@ Thumbs.db
 kicad_plugin/vendor/pypresence-*.dist-info/*
 !kicad_plugin/vendor/pypresence-*.dist-info/licenses/
 !kicad_plugin/vendor/pypresence-*.dist-info/licenses/LICENSE
-packages.json
-repository.json

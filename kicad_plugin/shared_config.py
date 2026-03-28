@@ -11,7 +11,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "discord_client_id": "1486478009967055059",
     "hide_filename": False,
     "hidden_project_text": "Working on a generic project",
-    "poll_interval_seconds": 5,
+    "poll_interval_seconds": 4,
     "idle_threshold_seconds": 300,
     "large_image": "large_image",
     "large_text": "KiCad 10",

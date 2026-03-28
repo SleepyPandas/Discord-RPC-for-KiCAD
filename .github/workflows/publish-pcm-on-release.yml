@@ -240,6 +240,6 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repository.json packages.json pcm-artifacts
+          git add -A -- repository.json packages.json pcm-artifacts
           git commit -m "chore: publish PCM files for v${{ steps.metadata.outputs.version }}"
           git push origin HEAD:${{ steps.refs.outputs.publish_branch }}

@@ -1,0 +1,52 @@
+{
+  "packages": [
+    {
+      "$schema": "https://go.kicad.org/pcm/schemas/v2",
+      "name": "Discord RPC for KiCad",
+      "description": "KiCad 10 Discord Rich Presence plugin with a startup watcher and privacy controls.",
+      "description_full": "Installs the KiCad preferences plugin plus a background watcher that starts from Windows startup and tracks KiCad windows.\n\nAfter the plugin has been loaded once, the watcher keeps Discord Rich Presence available for the KiCad project manager, schematic editor, and PCB editor without a separate manual bridge setup.",
+      "identifier": "com.github.sleepypandas.discord-rpc-for-kicad",
+      "type": "plugin",
+      "author": {
+        "name": "SleepyPandas",
+        "contact": {
+          "web": "https://github.com/SleepyPandas/Discord-RPC-for-KiCAD"
+        }
+      },
+      "maintainer": {
+        "name": "SleepyPandas",
+        "contact": {
+          "web": "https://github.com/SleepyPandas/Discord-RPC-for-KiCAD"
+        }
+      },
+      "category": "plugin",
+      "license": "No license specified",
+      "resources": {
+        "Homepage": "https://github.com/SleepyPandas/Discord-RPC-for-KiCAD",
+        "Source": "https://github.com/SleepyPandas/Discord-RPC-for-KiCAD",
+        "Issues": "https://github.com/SleepyPandas/Discord-RPC-for-KiCAD/issues"
+      },
+      "tags": [
+        "discord",
+        "kicad",
+        "plugin",
+        "rich-presence"
+      ],
+      "versions": [
+        {
+          "version": "1.1.3",
+          "status": "stable",
+          "kicad_version": "10.0",
+          "runtime": "swig",
+          "platforms": [
+            "windows"
+          ],
+          "download_url": "https://raw.githubusercontent.com/SleepyPandas/Discord-RPC-for-KiCAD/main/pcm-artifacts/discord-rpc-for-kicad-v1.1.3-pcm.zip",
+          "download_sha256": "7923c588124a70db966944bbddec9d9b1a9cea9c5dc48fbe514b3cee44275f0b",
+          "download_size": 28140,
+          "install_size": 101245
+        }
+      ]
+    }
+  ]
+}
