@@ -32,13 +32,11 @@ The preferences dialog lets you:
 
 ## Shared Configuration
 
-The plugin stores its settings in the same user config file location used by the standalone bridge.
+The plugin stores its settings in a per-user KiCad config location.
 
 On Windows the config file is stored at:
 
 `%APPDATA%\kicad\discord-rpc-for-kicad\config.json`
-
-If an older repo-local `config.json` exists, it is copied there automatically the first time the plugin or bridge runs.
 
 ## Applying Preference Changes
 
