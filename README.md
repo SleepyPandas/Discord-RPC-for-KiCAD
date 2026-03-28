@@ -52,4 +52,4 @@ This rebuilds:
 
 - `repository.json`
 - `packages.json`
-- `pcm-artifacts/discord-rpc-for-kicad-v1.0.1-pcm.zip`
+- `pcm-artifacts/discord-rpc-for-kicad-v1.0.3-pcm.zip`
